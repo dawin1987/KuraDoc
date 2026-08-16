@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Sistema de Gestión Integrar</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+<!-- ── KuraDoc Navbar ── -->
+    <link rel="stylesheet" href="navbar.css?v=1">
+    <!-- Estilos de la aplicación -->
+    <link rel="stylesheet" href="assets/app.styles.css?v=1">
+     <link rel="stylesheet" href="assets/fp_expediente.styles.css?v=1"> 
+     <link rel="stylesheet" href="assets/fp_expediente_responsive_fix.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icons" href="/icons/icon-azul-2.png">
+<link rel="service-worker" href="service-worker.js">
+<meta name="theme-color" content="#b60000">
+
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js");
+}
+</script>
+
+
+</head>
+<body class="app-not-logged">
+
+    <!-- ═══ SPLASH — pantalla de carga inicial ════════════════ -->
+    <div id="app-splash">
+        <div class="splash-logo">🏥</div>
+        <div class="splash-title">AppMedicaRD</div>
+        <div class="splash-subtitle">Sistema de Gestión Clínica</div>
+        <div class="splash-bar-wrap">
+            <div class="splash-bar"></div>
+        </div>
+        <div class="splash-status" id="splash-status">Verificando sesión…</div>
+    </div>
+
+    <!-- ═══ OFFLINE — sin conexión a internet ═════════════════ -->
+    <div id="offline-screen">
+        <div class="offline-icon">📡</div>
+        <div class="offline-title">Sin conexión a internet</div>
+        <div class="offline-subtitle">
+            No se puede conectar con el servidor.<br>
+            Verifica tu conexión y vuelve a intentarlo.
+        </div>
+        <ul class="offline-steps">
+            <li data-icon="📶">Verifica tu Wi-Fi o datos móviles</li>
+            <li data-icon="🔄">Reinicia tu router si es necesario</li>
+            <li data-icon="✈️">Desactiva el modo avión si está activo</li>
+            <li data-icon="🆘">Llama a soporte técnico si el problema persiste</li>
+        </ul>
+        <button class="offline-reload-btn" onclick="location.reload()">
+            🔄 Reintentar conexión
+        </button>
+        <div class="offline-support">Soporte técnico disponible si el problema persiste</div>
+    </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       KURADOC NAVBAR — visible solo cuando NO hay sesión activa
+       Se oculta automáticamente cuando el usuario está logueado
+       ══════════════════════════════════════════════════════ -->
+  <nav id="kd-navbar" style="z-index:8999;"></nav>
+  <div id="kd-mobile-menu" class="kd-mobile-menu"></div>
+
+  <!-- Página de verificación pública — activa con ?verificar=TOKEN en la URL -->
+  <div id="verificacionPage" class="hidden" style="min-height:100vh;background:#f1f5f9;font-family:-apple-system,'Segoe UI',sans-serif;"></div>
+
+  <div id="loginPage" class="login-container imagen-formulario hidden">
+
+    <!-- SECCIÓN IZQUIERDA: IMAGEN -->
+    
+    <div class="login-image" style="    background-size: cover;height: -webkit-fill-available; background-image: url(img/loginmedicina1.png);">
+        <div class="image-overlay">
+            
+            <h1 class="login-title">Sistema de Gestión Integrar</h1>
+            
+               <p class="login-subtitle-izquierdo">Transformando la Salud Digital en el sector salud</p>
+                <p class="login-subtitle-izquierdo">Version 0.1</p>
+</div>
+    </div>
+
+    <!-- SECCIÓN DERECHA: FORMULARIO -->
+    <div class="login-card">
+        <div style="text-align: center;">
+            <div class="login-icon"><a href="index.html" class="kd-logo">
+         <img src="img/logok.png?v=2" alt="KuraDoc" class="kd-logo-img">
+              </a></div>
+            <h1 style="/* background: red; */ font-size: 13px;color: #1a91a6;">Donde la Medicina fluye con tecnología</h1>
+            <p class="login-subtitle" style="margin-top: 11px;"> Inicia sesión para continuar</p>
+ 
+        </div>
+
+        <div id="loginAlert" class="hidden"></div>
+
+        <form id="loginForm" autocomplete="on">
+            <div class="form-group">
+                <label class="form-label" for="loginEmail">Correo electrónico</label>
+                <input type="email" class="form-input" id="loginEmail"
+                    placeholder="usuario@correo.com"
+                    autocomplete="email"
+                    oninput="this.classList.remove('input-error')"
+                    required>
+            </div>
+
+            <div class="form-group">
+                <div class="login-label-row">
+                    <label class="form-label" for="loginPassword" style="margin-bottom:0;">Contraseña</label>
+                   
+                </div>
+                <div class="pwd-wrap">
+                    <input type="password" class="form-input" id="loginPassword"
+                        placeholder="••••••••"
+                        autocomplete="current-password"
+                        oninput="this.classList.remove('input-error')"
+                        required>
+                    <button type="button" class="pwd-toggle"
+                            id="pwd-toggle-btn"
+                            onclick="_togglePwdVisibility('loginPassword', 'pwd-toggle-btn')"
+                            data-tooltip="Mostrar contraseña"
+                            aria-label="Mostrar contraseña">
+                        <svg id="eye-icon-loginPassword" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                    </button>
+                </div>
+
+          <div class="login-label-row">
+                    
+                    <button type="button" class="forgot-link" onclick="_mostrarOlvideContrasena()" style="width: 100%;text-align: right; padding: 11px 1px 11px;">
+                        ¿Olvidaste tu contraseña?
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="loginBtn"
+                style="margin-top: 8px;">
+                <span id="loginBtnText">Iniciar Sesión</span>
+                <div class="spinner hidden" id="loginSpinner"></div>
+            </button>
+        </form>
+
+        <div style="display: flex; text-align: center; margin-top: 16px; align-items: center; justify-content: center;"> 
+           <h1 style="font-weight: 500;   font-size: 14px;color: #484b4d;">¿No tienes una cuenta?</h1>
+            <button type="button"
+                class="btn btn-secondary"
+                onclick="toggleRegistro()"
+                style="    padding: 4px;color: #0041ffbd; background: none; border:none;">
+                Regístrate
+            </button>
+        </div>
+    </div>
+
+
+</div>
+
+    
+
+
+
+
+     <div id="registerModal" class="hidden">
+        <div class="modal-overlay" style="
+    align-items: flex-end;
+    width: 100%;
+    left: 0;
+    top: 0;
+    padding-top: 45px;
+    height: 100%;
+    /* overflow-y: auto; */
+    position: fixed;
+    
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;">
+            <div class="modal" onclick="event.stopPropagation()" style="max-width:600px;">
+                <div class="modal-header">
+                    <h2 class="modal-title">Crear Cuenta de Paciente</h2>
+                    <button class="modal-close" onclick="toggleRegistro()">×</button>
+                </div>
+                <div class="modal-body">
+                    <form id="registerForm" autocomplete="off">
+                        <!-- Alert container -->
+                        <div id="regAlerta" style="display:none;"></div>
+
+                        <!-- PASO 1: Identidad -->
+                        <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">1 · Datos personales</div>
+
+                        <div class="form-group">
+                            <label class="form-label">Nombre Completo <span style="color:#dc2626">*</span></label>
+                            <input type="text" class="form-input" id="regNombre" required
+                                placeholder="Ej: María García López"
+                                style="border-radius:8px;"
+                                onblur="this.value=this.value.trim()">
+                        </div>
+
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                            <div class="form-group">
+                                <label class="form-label">Fecha de Nacimiento <span style="color:#dc2626">*</span></label>
+                                <input type="text" class="form-input" id="regFechaNac"
+                                    placeholder="dd-mm-aaaa" maxlength="10" required
+                                    style="border-radius:8px;"
+                                    oninput="regAutoFormatFecha(this,'regEdad','regCedulaWrap')"
+                                    autocomplete="off">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Edad</label>
+                                <input type="text" class="form-input" id="regEdad" readonly
+                                    placeholder="Auto" style="background:#f8fafc;border-radius:8px;color:#64748b;">
+                            </div>
+                        </div>
+
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                            <div class="form-group">
+                                <label class="form-label">Género <span style="color:#dc2626">*</span></label>
+                                <select class="form-input" id="regGenero" required style="border-radius:8px;">
+                                    <option value="">— Seleccione —</option>
+                                    <option value="Femenino">Femenino</option>
+                                    <option value="Masculino">Masculino</option>
+                                    <option value="Otro">Otro / Prefiero no decir</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="regCedulaWrap" style="opacity:.45;pointer-events:none;">
+                                <label class="form-label">Cédula <span id="regCedulaStar" style="color:#dc2626">*</span></label>
+                                <input type="text" class="form-input" id="regCedula"
+                                    placeholder="000-0000000-0" maxlength="13"
+                                    style="border-radius:8px;"
+                                    oninput="this.value=formatearCedula(this.value)">
+                            </div>
+                        </div>
+
+                        <!-- PASO 2: Seguro -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                         <div style="font-size:11px;font-weight:600;color:#94a3b8;letter-spacing:.5px;">2 · Seguro médico
+                             <select class="form-input" id="regSeguroARS" style="border-radius:8px;"> </select>
+                          </div>
+                            <div class="form-label" style="padding: 0;">Teléfono <span style="color:#dc2626">*</span></label>
+                                <input type="tel" class="form-input" id="regTelefono" 
+                                     required style="border-radius:8px;" 
+                                       placeholder="809-123-4567" maxlength="12"
+                                      oninput="this.value=formatearTelefono(this.value)">
+                            </div>
+                       
+                   </div>
+
+                        <!-- Campo Dirección -->
+                        <div class="form-group" style="margin-top:5px;">
+                            <label class="form-label">Dirección <span style="color:#dc2626">*</span></label>
+                            <input type="text" class="form-input" id="regDireccion"
+                                placeholder="Ej: C/Duarte #15, Los Jardines, Santo Domingo"
+                                style="border-radius:8px;"
+                                onblur="this.value=this.value.trim()">
+                        </div>
+
+                        <!-- PASO 3: Acceso -->
+                        <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;">3 · Acceso al sistema</div>
+                        <div class="form-group">
+                            <label class="form-label">Email <span style="color:#dc2626">*</span></label>
+                            <input type="email" class="form-input" id="regEmail" required style="border-radius:8px;" placeholder="tu-correo@gmail.com">
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                            <div class="form-group">
+                                <label class="form-label">Contraseña <span style="color:#dc2626">*</span></label>
+                                <div style="position:relative;">
+                                <input type="password" class="form-input" id="regPassword" required minlength="6" style="border-radius:8px;padding-right:38px;" placeholder="Mínimo 6 caracteres">
+                                <button type="button" onclick="_togglePwd('regPassword',this)"
+                                    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:#94a3b8;padding:2px;"
+                                    title="Ver/ocultar">👁</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Confirmar contraseña <span style="color:#dc2626">*</span></label>
+                            <div style="position:relative;">
+                                <input type="password" class="form-input" id="regPassword2" required minlength="6" style="border-radius:8px;padding-right:38px;" placeholder="Repite tu contraseña">
+                                <button type="button" onclick="_togglePwd('regPassword2',this)"
+                                    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:#94a3b8;padding:2px;"
+                                    title="Ver/ocultar">👁</button>
+                            </div>
+                            </div>
+                            
+                        </div>
+
+                        <!-- ── ACEPTACIÓN DE TÉRMINOS (auto-registro) ── -->
+                        <div id="regTerminosWrap" style="margin-top:6px;padding:2px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;">
+                            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:11px;color:#1e293b;line-height:1.2;">
+                                <input type="checkbox" id="regAceptaTerminos"
+                                    style="margin-top:3px;flex-shrink:0;width:16px;height:16px;accent-color:#2563eb;cursor:pointer;">
+                                <span>
+                                    Acepto los
+                                    <a href="terminos.html" target="_blank" style="color:#2563eb;font-weight:700;text-decoration:underline;">Términos y Condiciones</a>
+                                    y la
+                                    <a href="privacidad.html" target="_blank" style="color:#2563eb;font-weight:700;text-decoration:underline;">Política de Privacidad</a>,
+                                    incluido el uso de cookies, y autorizo a KuraDoc al tratamiento de mis datos
+                                    para fines médicos, gestión de citas y comunicaciones relacionadas con el servicio.
+                                </span>
+                            </label>
+                        </div>
+                        <div id="regTerminosError" style="display:none;color:#dc2626;font-size:12px;font-weight:600;margin-top:6px;padding-left:4px;">
+                            ⚠️ Debes aceptar los Términos y Condiciones para registrarte.
+                        </div>
+                        <!-- ─────────────────────────────────────────────── -->
+
+                        <div style="display:flex;gap:12px;margin-top:14px;">
+                            <button type="submit" class="btn btn-primary" style="flex:1;" id="btnCrearCuenta">Crear Cuenta</button>
+                            <button type="button" class="btn btn-secondary" onclick="toggleRegistro()">Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="mainApp" class="hidden">
+        <!-- Overlay + Hamburguesa para responsive -->
+        <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+        <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Abrir menú" title="Menú">
+            <span></span><span></span><span></span>
+        </button>
+
+        <!-- ── Botón de perfil flotante ─────────────────── -->
+        <div id="profile-btn-wrap">
+            <button id="profile-avatar-btn" onclick="toggleProfileDropdown(event)" title="Mi perfil">
+                <span  id="profile-avatar-initials">👤</span>👤
+            </button>
+            <div id="profile-dropdown">
+                <!-- Header con datos del usuario -->
+                <div class="pdd-header">
+                    <div class="pdd-avatar-lg" id="pdd-avatar-lg">👤</div>
+                    <div style="min-width:0;">
+                        <div class="pdd-name" id="pdd-name">—</div>
+                        <div class="pdd-email" id="pdd-email">—</div>
+                        <span class="pdd-rol" id="pdd-rol">—</span>
+                    </div>
+                </div>
+                <!-- Acciones -->
+                <div class="pdd-body">
+                    <!-- Submenú Configuración (solo para médico; el JS oculta/muestra) -->
+                    <div id="config-submenu-wrap">
+                        <button class="pdd-btn" onclick="toggleConfigSubmenu(event)">
+                            <span class="pdd-btn-icon">⚙️</span>
+                            <span style="flex:1;">Configuración</span>
+                            <span id="config-arrow" style="font-size:10px; opacity:.5; transition:transform .2s;">▼</span>
+                        </button>
+                        <div id="config-submenu" class="config-submenu hidden">
+                            <button class="pdd-btn pdd-sub-btn" onclick="abrirEditarPerfil(); closeProfileDropdown();">
+                                <span class="pdd-btn-icon">✏️</span> Editar mi perfil
+                            </button>
+                            <button class="pdd-sub-btn pdd-btn" onclick="_abrirVerMiPlan(); closeProfileDropdown();">
+                                <span class="pdd-btn-icon">📋</span> Ver mi plan
+                            </button>
+                            <button class="pdd-sub-btn pdd-btn" onclick="_abrirVerSecretaria(); closeProfileDropdown();">
+                                <span class="pdd-btn-icon">👩‍💼</span> Ver secretaria
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Botón simple para roles que no son médico -->
+                    <button class="pdd-btn" id="btn-editar-perfil-simple" onclick="abrirEditarPerfil(); closeProfileDropdown();">
+                        <span class="pdd-btn-icon">✏️</span> Editar Perfil
+                    </button>
+                    <!-- Récords del paciente — solo visible si rol=paciente -->
+                    <div id="pdd-records-section" class="hidden">
+                        <div class="pdd-divider"></div>
+                        <div class="pdd-records-title">🗂 Mis Números de Récord</div>
+                        <div id="pdd-records-list">
+                            <div class="pdd-records-loading">Cargando...</div>
+                        </div>
+                    </div>
+                    <div class="pdd-divider"></div>
+                    <button class="pdd-btn danger" onclick="closeProfileDropdown(); logout();">
+                        <span class="pdd-btn-icon">🚪</span> Cerrar Sesión
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Modal Ver Mi Plan ──────────────────────────── -->
+        <div id="modal-ver-plan" onclick="if(event.target===this) _cerrarVerMiPlan()">
+            <div class="kura-info-modal">
+                <div class="kura-info-modal-header">
+                    <span class="kura-info-modal-title">📋 Mi Plan</span>
+                    <button class="kura-info-modal-close" onclick="_cerrarVerMiPlan()">×</button>
+                </div>
+                <div class="kura-info-modal-body" id="ver-plan-body">
+                    <!-- Se rellena dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Modal Ver Secretaria ──────────────────────── -->
+        <div id="modal-ver-secretaria" onclick="if(event.target===this) _cerrarVerSecretaria()">
+            <div class="kura-info-modal">
+                <div class="kura-info-modal-header">
+                    <span class="kura-info-modal-title">👩‍💼 Mi Secretaria</span>
+                    <button class="kura-info-modal-close" onclick="_cerrarVerSecretaria()">×</button>
+                </div>
+                <div class="kura-info-modal-body" id="ver-secretaria-body">
+                    <!-- Se rellena dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Modal edición de perfil ───────────────────── -->
+        <div id="modal-edit-perfil" onclick="if(event.target===this) cerrarEditarPerfil()">
+            <div class="pep-modal">
+                <div class="pep-header">
+                    <span class="pep-title">✏️ Editar mi perfil</span>
+                    <button class="pep-close" onclick="cerrarEditarPerfil()">×</button>
+                </div>
+                <div class="pep-body" id="pep-body">
+                    <!-- Se rellena dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+        <header class="app-header">
+            <div class="header-content">
+                <div class="header-icon">
+                   <div class="header-left">
+                         <div class="header-icon1"> 
+                              <img src="img/icon.png?v=2" alt="KuraDoc" class="kd-logo-img" style="margin-right: 8px; margin-top: 5px; width: auto; height: 35px;">
+                            </div>
+                            <div class="header-icon2"> 
+                                <img src="img/icon2.png?v=2" alt="KuraDoc" class="kd-logo-img slc-icon sidebar-nav-label" style="width: auto; height: 25px;">
+                             </div>
+                      </div>
+                     
+                      <div style="margin: 2px 10px;">
+                        <div class="header-subtitle" id="userName"></div>
+                        <div id="userespecialidad" style="font-size: 9.5px; color: #94a3b8;letter-spacing: 0.5px;"></div>
+                            
+                    </div>
+                </div>
+    <!-- CALENDARIO: -->
+
+       <!-- CONTADOR DE LIKES (médico / secretaria) -->
+                <div id="sidebar-likes-counter" style="display:none;">
+                    <span class="slc-label">Likes</span>
+                    <div class="slc-count">
+                        <span class="slc-icon sidebar-nav-label">❤️</span>
+                        <span class="slc-icon sidebar-nav-label" id="slc-number">0</span>
+                    </div>
+                </div>
+                            <div id="miniCalendar" class="mini-calendar" aria-label="Calendario">
+                              <!-- El contenido lo genera el script -->
+                             </div>
+
+               
+
+                <!-- NAV RESPONSIVO DEL SIDEBAR (tablet + móvil) -->
+                <nav id="sidebarNav" class="sidebar-nav"></nav>
+                 
+                 <!-- Botón Configuración del sidebar -->
+                 <div id="sidebar-config-wrap">
+                     <button class="pdd-btn" onclick="toggleConfigSubmenu(event, 'sidebar')">
+                         <span class="pdd-btn-icon">⚙️</span>
+                         <span class="sidebar-nav-label" style="flex:1;">Configuración</span>
+                         <span id="sidebar-config-arrow" class="sidebar-nav-label" style="font-size:10px; opacity:.5; transition:transform .2s;">▼</span>
+                     </button>
+                     <div id="sidebar-config-submenu" class="config-submenu hidden">
+                         <button class="pdd-btn pdd-sub-btn" onclick="abrirEditarPerfil();">
+                             <span class="pdd-btn-icon">✏️</span>
+                             <span class="sidebar-nav-label">Editar mi perfil</span>
+                         </button>
+                         <button class="pdd-sub-btn pdd-btn" onclick="_abrirVerMiPlan();">
+                             <span class="pdd-btn-icon">📋</span>
+                             <span class="sidebar-nav-label">Ver mi plan</span>
+                         </button>
+                         <button class="pdd-sub-btn pdd-btn" onclick="_abrirVerSecretaria();">
+                             <span class="pdd-btn-icon">👩‍💼</span>
+                             <span class="sidebar-nav-label">Ver secretaria</span>
+                         </button>
+                     </div>
+                 </div>
+                 <!-- Botón simple para no-médicos -->
+                 <button class="pdd-btn" id="sidebar-editar-simple" onclick="abrirEditarPerfil();">
+                     <span class="pdd-btn-icon">✏️</span>
+                     <span class="sidebar-nav-label">Editar Perfil</span>
+                 </button> 
+                 
+                <div class="header-right">
+                    <span class="badge badge-info badge-info-rol" id="userRole"></span>
+                       <span style="font-weight:600;width:100%;font-size:10px;color:rgb(255 255 255 / 75%);text-decoration:none;padding:2px 1px;border-radius:5px;transition:color .2s,background .2s;display:flex;align-items:center;gap:1px;justify-content: flex-end;">Version 1.0</span>
+                 
+                      
+                       <div class="Rd7ond1">
+                           <span class="oZC79e JRoCVd">
+                                  <div class="DM2Ltc">
+                                  
+                             </div>
+                                   </span>
+                         <span class="s3Ebxc"><div class="o8fWw">
+                                 
+                                  </div>
+                            </div>
+                        </span>
+                     </div>
+                      
+
+                    <button class="btn btn-secondary btn-sm btn-salir" onclick="logout()" title="Cerrar sesión"
+                        style="display:flex;align-items:center;gap:6px;"> 
+                        <svg height="20" viewBox="0 0 24 24" width="20" focusable="false" style="flex-shrink:0;">
+                            <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" fill="currentColor"></path>
+                            <path d="M0 0h24v24H0z" fill="none"></path>
+                        </svg>
+                        <span class="salir-label">Salir</span>
+                    </button>
+
+                    <!-- ── Enlaces legales (visible cuando está logueado) ── -->
+                    <div  class="slc-icon sidebar-nav-label" id="sidebar-legal-links" style="width:100%;margin-top:5px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.08);display:flex;gap:1px;">
+                        <a href="terminos.html" target="_blank"
+                            style="font-size:8.5px;color:rgba(255,255,255,0.45);text-decoration:none;padding:2px 3px;border-radius:5px;transition:color .2s,background .2s;display:flex;align-items:center; justify-content: center;"
+                            onmouseover="this.style.color='rgba(255,255,255,0.8)';this.style.background='rgba(255,255,255,0.06)';"
+                            onmouseout="this.style.color='rgba(255,255,255,0.45)';this.style.background='transparent';">
+                            <span style="font-size:10px;"></span>
+                            <span class="salir-label">Términos y Condiciones</span>
+                        </a>
+                            <span style="font-size:9px;color:rgba(255,255,255,0.45);text-decoration:none;padding:1px 1px;border-radius:5px;transition:color .2s,background .2s;display:flex; justify-content: center;">|</span>
+                        <a href="privacidad.html" target="_blank"
+                            style="font-size:8.5px;color:rgba(255,255,255,0.45);text-decoration:none;padding:2px 3px;border-radius:5px;transition:color .2s,background .2s;display:flex;align-items:center;justify-content: center;"
+                            onmouseover="this.style.color='rgba(255,255,255,0.8)';this.style.background='rgba(255,255,255,0.06)';"
+                            onmouseout="this.style.color='rgba(255,255,255,0.45)';this.style.background='transparent';">
+                            <span style="font-size:10px;"></span>
+                            <span class="salir-label">Declaraciones de Privacidad</span>
+                        </a>
+                          
+                    </div>
+                     
+                    <!-- ───────────────────────────────────────────────── -->
+                
+
+               </div>
+            </div>
+        </header>
+        <main class="main-content" id="mainContent"></main>
+
+        <nav class="mobile-nav" id="mobileNav"></nav>
+
+        <!-- Modal detalle médico -->
+        <div id="modal-medico-detalle" onclick="if(event.target===this)cerrarDetalleMedico()">
+            <div class="mmd-sheet" id="mmd-sheet-inner">
+                <div class="mmd-header">
+                    <div class="mmd-drag"></div>
+                    <button class="mmd-close" onclick="cerrarDetalleMedico()">✕</button>
+                    <div class="mmd-avatar-lg" id="mmd-avatar"></div>
+                    <div class="mmd-nombre" id="mmd-nombre"></div>
+                    <div class="mmd-esp" id="mmd-esp"></div>
+                   <div class="mmd-espSub" id="mmd-espSub"></div>
+                    <div id="mmd-vip" style="font-size:18px;margin-bottom:8px;display:none;">⭐ Médico Destacado</div>
+                </div>
+                <div class="mmd-body" id="mmd-body"></div>
+                <div class="mmd-actions" id="mmd-actions"></div>
+                <div style="padding:0 16px 16px;" id="mmd-comments-section"></div>
+            </div>
+        </div>
+
+        <!-- Modal feedback -->
+        <div id="modal-feedback" onclick="if(event.target===this)cerrarFeedback()">
+            <div class="mfb-box">
+                <div class="mfb-title" id="mfb-title">✏️ Dejar comentario</div>
+                <textarea class="mfb-textarea" id="mfb-text"
+                    placeholder="Comparte tu experiencia con este médico…" maxlength="300"></textarea>
+                <div style="text-align:right;font-size:10px;color:#94a3b8;margin-top:3px;">
+                    <span id="mfb-chars">0</span>/300
+                </div>
+                <button class="mfb-send" id="mfb-send-btn" onclick="_enviarFeedback()">
+                    💬 Publicar comentario
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+<div id="modalNuevoPaciente" class="hidden">
+    <div class="modal-overlay" >
+        <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px; border-radius: 16px; width: 90%; max-height: calc(100vh - 50px);">
+            <div class="modal-header" style="padding: 6px 24px; border-bottom: 1px solid #f1f5f9;">
+                <h2 class="modal-title" style="font-size: 1.2rem; font-weight: 700; color: #1e293b;">Registrar Nuevo Paciente</h2>
+                <button class="modal-close" onclick="cerrarModalNuevoPaciente()">×</button>
+            </div>
+            
+            <div class="modal-body" style="padding: 8px 24px; max-height: 91vh; overflow-y: auto;">
+               
+
+   <div id="pexBuscador" style="
+    background: linear-gradient(135deg,#f0f7ff,#e8f4fd);
+    border: 1.5px solid #bfdbfe;
+    border-radius: 12px;
+    padding: 5px 6px;
+    margin-bottom: 8px;
+">
+    <!-- Encabezado -->
+    <div style="font-size:9px;font-weight:700;color:#1d4ed8;
+                text-transform:uppercase;letter-spacing:0.6px;
+                margin-bottom:4px;display:flex;align-items:center;gap:4px;">
+        <span style="font-size:13px;">🔍</span>
+        Buscar paciente registrado en Hospital Cevicos
+        <span style="margin-left:auto;font-size:9px;font-weight:600;
+                     color:#6366f1;background:#e0e7ff;
+                     padding:2px 8px;border-radius:20px;">Base interna</span>
+    </div>
+ 
+    <!-- Input de búsqueda -->
+    <div style="display:flex;gap:4px;align-items:center;">
+        <input
+            type="text"
+            id="pexInput"
+            placeholder="Nombre, cédula, teléfono o No. de record..."
+            style="flex:1;padding:9px 14px;border:1px solid #c7d2fe;
+                   border-radius:9px;font-size:13px;outline:none;background:white;
+                   transition:border-color .2s,box-shadow .2s;"
+            oninput="_pexBuscar(this.value)"
+            onfocus="this.style.borderColor='#6366f1';
+                     this.style.boxShadow='0 0 0 3px rgba(99,102,241,.15)'"
+            onblur="this.style.borderColor='#c7d2fe';
+                    this.style.boxShadow='none'"
+            autocomplete="off"
+        >
+        <button type="button" onclick="_pexLimpiar()"
+            title="Limpiar búsqueda y formulario"
+            style="padding:9px 14px;background:#f1f5f9;border:1px solid #e2e8f0;
+                   border-radius:9px;font-size:12px;color:#64748b;
+                   cursor:pointer;white-space:nowrap;transition:background .15s;"
+            onmouseover="this.style.background='#e2e8f0'"
+            onmouseout="this.style.background='#f1f5f9'">
+            ✕ Limpiar
+        </button>
+    </div>
+ 
+    <!-- Resultados de búsqueda -->
+    <div id="pexResultados" style="margin-top:8px;"></div>
+ 
+    <!-- Chip de confirmación (se muestra al seleccionar) -->
+    <div id="pexChip" style="display:none;margin-top:8px;
+         background:#f0fdf4;border:1.5px solid #86efac;
+         border-radius:10px;padding:10px 14px;">
+        <div style="font-size:11px;font-weight:700;color:#15803d;margin-bottom:4px;">
+            ✅ Datos importados desde Hospital Cevicos — revisa y completa antes de guardar
+        </div>
+        <div id="pexChipInfo"
+             style="font-size:13px;color:#166534;font-weight:600;"></div>
+        <div id="pexAvisos" style="margin-top:6px;"></div>
+    </div>
+</div>
+
+
+
+       <form id="formNuevoPacienteSecretaria" autocomplete="off">
+                    <div id="secRegAlerta" style="display:none; margin-bottom: 5px;"></div>
+
+                    <div class="fp-grid-container">
+                        
+                        <div>
+                            <div style="font-size:10px; font-weight:800; color:#6366f1; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px; display:flex; align-items:center; gap:12px;">
+                                <span style="background:#e0e7ff; padding:2px 6px; border-radius:4px;">1</span> Datos personales
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Nombre Completo <span style="color:#dc2626">*</span></label>
+                                <input type="text" id="secRegNombre" class="form-input" required placeholder="Ej: Juan Pérez" style="border-radius:8px;">
+                            </div>
+
+                            <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
+                                <div class="form-group">
+                                    <label class="form-label">Fecha Nacimiento <span style="color:#dc2626">*</span></label>
+                                    <input type="text" class="form-input" id="secRegFechaNac" placeholder="dd-mm-aaaa" maxlength="10" required style="border-radius:8px;" oninput="regAutoFormatFecha(this,'secRegEdad','secRegCedulaWrap')">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Edad</label>
+                                    <input type="text" class="form-input" id="secRegEdad" readonly placeholder="Auto" style="background:#f8fafc; border-radius:8px; color:#64748b; text-align:center;">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Género <span style="color:#dc2626">*</span></label>
+                                <select class="form-input" id="secRegGenero" required style="border-radius:8px;">
+                                    <option value="">— Seleccione —</option>
+                                    <option value="Femenino">Femenino</option>
+                                    <option value="Masculino">Masculino</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" id="secRegCedulaWrap" style="opacity:.45; pointer-events:none;">
+                                <label class="form-label">Cédula <span id="secRegCedulaStar" style="color:#dc2626">*</span></label>
+                                <input type="text" class="form-input" id="secRegCedula" placeholder="000-0000000-0" maxlength="13" style="border-radius:8px;" oninput="this.value=formatearCedula(this.value)">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Teléfono <span style="color:#dc2626">*</span></label>
+                                <input type="text" 
+                                       id="secRegTelefono" 
+                                       class="form-input" 
+                                       required 
+                                       style="border-radius:8px;" 
+                                       placeholder="809-123-4567"
+                                       maxlength="12"
+                                       oninput="this.value = window.formatearTelefono(this.value)">
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="font-size:10px; font-weight:800; color:#6366f1; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px; display:flex; align-items:center; gap:8px;">
+                                <span style="background:#e0e7ff; padding:2px 6px; border-radius:4px;">2</span> Seguro y Acceso
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Seguro Médico (ARS)</label>
+                                <select class="form-input" id="secRegSeguroARS" style="border-radius:8px;"></select>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Dirección (Sector / Ciudad)</label>
+                                <input type="text" id="secRegDireccion" class="form-input" placeholder="Ej: Los Jardines, Santo Domingo" style="border-radius:8px;">
+                            </div>
+
+                            <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; margin-bottom:12px;">Configuración de Usuario</div>
+                                <div class="form-group">
+                                    <label class="form-label">Email (Usuario) <span style="color:#dc2626">*</span></label>
+                                    <input type="email" id="secRegEmail" class="form-input" required style="border-radius:8px; background:white;" placeholder="correo@ejemplo.com">
+                                </div>
+
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label">Contraseña <span style="color:#dc2626">*</span></label>
+                                        <div style="position:relative;">
+                                            <input type="password" id="secRegPassword" class="form-input" value="p123456" required style="border-radius:8px; padding-right:35px; background:white;">
+                                            <button type="button" onclick="_togglePwd('secRegPassword',this)" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#94a3b8;">👁</button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label">Confirmar <span style="color:#dc2626">*</span></label>
+                                        <div style="position:relative;">
+                                            <input type="password" id="secRegPassword2" class="form-input" value="p123456" required style="border-radius:8px; padding-right:35px; background:white;">
+                                            <button type="button" onclick="_togglePwd('secRegPassword2',this)" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#94a3b8;">👁</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:12px; margin-top:10px; padding-top:10px; border-top: 1px solid #f1f5f9;">
+                        <button type="button" class="btn btn-secondary" onclick="cerrarModalNuevoPaciente()" style="flex: 1; border-radius: 10px;">Cancelar</button>
+                        <button type="submit" class="btn btn-primary" id="btnGuardarPaciente" style="flex: 2; border-radius: 10px; background: #2563eb; font-weight: 700;">
+                            ✅ Guardar Paciente
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+   
+
+    <div id="modalContainer"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+
+    <!-- Lógica de la aplicación -->
+    <script src="assets/app.logic.js"></script>
+    <script src="assets/kd_facturacion_module.js"></script>
+    <script src="assets/fp_expediente_clinico.js"></script>
+    <script src="assets/kd_cie10_module.js"></script>
+    <script src="kd_print_module.js"></script>
+
+
+<div id="modalDocumentos" class="modal-overlay hidden" style="z-index: 2000;">
+    <div class="modal-content" style="width: 99%; max-width: 1900px; height: 97vh; display: flex; flex-direction: column; padding: 0;">
+        
+        <div style="padding: 15px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 8px 8px 0 0;">
+            <h3 style="margin: 0; color: #1e293b;">📄 Documentos Clínicos Especializados</h3>
+            <button class="btn-close" onclick="cerrarModalDocumentos()" style="background: none; border: none; font-size: 20px; cursor: pointer;">✖</button>
+        </div>
+
+        <div style="display: flex; flex: 1; overflow: hidden;">
+            
+            <div style="width: 280px; background: #f1f5f9; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow-y: auto;">
+                
+                <div id="doc-sidebar-paciente" style="padding: 15px; border-bottom: 1px solid #cbd5e1;">
+                    </div>
+
+            <div style="padding: 10px 0;">
+                 <div style="background: #0076ff61; padding: 5px 15px; font-size: 11px; font-weight: bold; color: #202020; text-transform: uppercase;">Especialidades</div>
+                    <button id="menu-doc-universal" onclick="activarMenuDoc('universal'); cargarDocUniversal()"
+                        style="width:100%;text-align:left;padding:10px 15px;background:transparent;border:none;border-left:4px solid transparent;cursor:pointer;color:#475569;font-weight:500;transition:all 0.2s;">
+                        🩺 Historia Universal
+                    </button>
+                    <button id="menu-doc-gineco" onclick="activarMenuDoc('gineco'); cargarDocGineco()" 
+                        style="width:100%;text-align:left;padding:10px 15px;background:#e0f2fe;border:none;border-left:4px solid #0ea5e9;cursor:pointer;color:#0f172a;font-weight:600;transition:all 0.2s;">
+                        🌸 Gineco-Obstétrica
+                    </button>
+                     <button id="menu-doc-pediatrico" onclick="activarMenuDoc('pediatrico'); cargarDocPediatrico()" 
+                        style="width:100%;text-align:left;padding:10px 15px;background:transparent;border:none;border-left:4px solid transparent;cursor:pointer;color:#475569;font-weight:500;transition:all 0.2s;">
+                        🧸 Pediátrica
+                    </button>
+                    <button id="menu-doc-nutri" onclick="activarMenuDoc('nutri'); cargarDocNutri()"
+                        style="width:100%;text-align:left;padding:10px 15px;background:transparent;border:none;border-left:4px solid transparent;cursor:pointer;color:#475569;font-weight:500;transition:all 0.2s;">
+                        🍎 Nutricional
+                    </button>
+                         <div style="background: #ceebff;padding: 5px 15px; font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase;">Otros Documentos</div>
+                    
+                    <button id="menu-doc-analitico" onclick="activarMenuDoc('analitico'); cargarDocAnalitico()"
+                        style="width:100%;text-align:left;padding:10px 15px;background:transparent;border:none;border-left:4px solid transparent;cursor:pointer;color:#475569;font-weight:500;transition:all 0.2s;">
+                        🧪 Analíticas
+                    </button>
+                    <button id="menu-doc-estudios" onclick="activarMenuDoc('estudios'); cargarDocEstudios()"
+                        style="width:100%;text-align:left;padding:10px 15px;background:transparent;border:none;border-left:4px solid transparent;cursor:pointer;color:#475569;font-weight:500;transition:all 0.2s;">
+                        🔬 Estudios
+                    </button>
+                    <button id="menu-doc-receta" onclick="activarMenuDoc('receta'); cargarDocRecetas()"
+                        style="width:100%;text-align:left;padding:10px 15px;background:transparent;border:none;border-left:4px solid transparent;cursor:pointer;color:#475569;font-weight:500;transition:all 0.2s;">
+                        💊 Recetas
+                    </button>
+                 </div>
+           </div>
+
+            <div id="doc-main-content" style="flex: 1; padding: 25px; overflow-y: auto; background: white;">
+                </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- MODAL: DETALLE DE SOLICITUD DE ANALÍTICAS             -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="modalDetalleAnalitica" class="hidden"
+    style="position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:10000;padding:16px;transition:opacity .18s ease;backdrop-filter:blur(3px);"
+    onclick="if(event.target===this) cerrarModalDetalleAnalitica()">
+    <div style="background:white;border-radius:16px;width:100%;max-width:780px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;">
+
+        <!-- Cabecera fija oscura -->
+        <div style="padding:14px 20px;background:#0f172a;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">🧪</span>
+                <span style="color:white;font-weight:800;font-size:15px;">Detalle de Solicitud de Laboratorio</span>
+            </div>
+            <button onclick="cerrarModalDetalleAnalitica()"
+                style="background:rgba(255,255,255,.12);border:none;color:white;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .15s;"
+                onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.12)'">✕</button>
+        </div>
+
+        <!-- Cuerpo scrolleable -->
+        <div id="modalDetalleAnalitica-body" style="padding:20px;overflow-y:auto;flex:1;">
+            <!-- Contenido dinámico inyectado por verDetalleSolicitud() -->
+        </div>
+
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- MODAL: DETALLE DE ORDEN DE ESTUDIOS                   -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="modalDetalleEstudio" class="hidden"
+    style="position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:3500;padding:16px;transition:opacity .18s ease;backdrop-filter:blur(3px);opacity:0;"
+    onclick="if(event.target===this) cerrarModalDetalleEstudio()">
+    <div style="background:white;border-radius:16px;width:100%;max-width:820px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;">
+        <div style="padding:14px 20px;background:linear-gradient(135deg,#4c1d95,#6d28d9);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">🔬</span>
+                <span style="color:white;font-weight:800;font-size:15px;">Detalle de Orden de Estudios de Imágenes</span>
+            </div>
+            <button onclick="cerrarModalDetalleEstudio()"
+                style="background:rgba(255,255,255,.12);border:none;color:white;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .15s;"
+                onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.12)'">✕</button>
+        </div>
+        <div id="modalDetalleEstudio-body" style="padding:20px;overflow-y:auto;flex:1;">
+        </div>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- MODAL: ACEPTACIÓN DE TÉRMINOS EN PRIMER INICIO DE SESIÓN         -->
+<!-- Aparece cuando el paciente fue creado por secretaria/médico y    -->
+<!-- aún no ha aceptado los Términos y Política de Privacidad.        -->
+<!-- No se puede cerrar sin aceptar. Solo se muestra una vez.         -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div id="modalTerminosPrimerAcceso"
+    style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.75);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);z-index:9999;align-items:flex-start;justify-content:center;padding:16px;padding-top:max(70px, env(safe-area-inset-top, 70px));overflow-y:auto;modalDetalleAnalitica">
+    <div style="background:white;border-radius:20px;width:100%;max-width:520px;box-shadow:0 24px 70px rgba(0,0,0,.40);overflow:hidden;animation:termModIn .35s cubic-bezier(.22,1,.36,1);">
+
+        <!-- Cabecera -->
+        <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a52 100%);padding:22px 24px 18px;text-align:center;">
+            <div style="font-size:40px;margin-bottom:10px;line-height:1;">📋</div>
+            <h2 style="color:white;font-size:18px;font-weight:900;margin:0 0 6px;letter-spacing:-.2px;">Bienvenido a KuraDoc</h2>
+            <p style="color:rgba(255,255,255,.6);font-size:12px;margin:0;line-height:1.5;">Antes de continuar, por favor lee y acepta nuestras políticas de uso</p>
+        </div>
+
+        <!-- Cuerpo -->
+        <div style="padding:22px 24px 24px;">
+
+            <!-- Resumen de políticas -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;margin-bottom:16px;">
+                <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#0f172a;">Al usar esta plataforma aceptas:</p>
+                <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:7px;font-size:13px;color:#475569;line-height:1.5;">
+                    <li>El tratamiento de tus datos personales para fines médicos y gestión de citas.</li>
+                    <li>El uso de cookies necesarias para el funcionamiento del servicio.</li>
+                    <li>Recibir comunicaciones relacionadas con tu atención médica.</li>
+                </ul>
+                <div style="display:flex;gap:16px;margin-top:14px;flex-wrap:wrap;">
+                    <a href="terminos.html" target="_blank"
+                        style="color:#2563eb;font-size:12px;font-weight:700;text-decoration:underline;display:inline-flex;align-items:center;gap:4px;">
+                        📄 Términos y Condiciones
+                    </a>
+                    <a href="privacidad.html" target="_blank"
+                        style="color:#2563eb;font-size:12px;font-weight:700;text-decoration:underline;display:inline-flex;align-items:center;gap:4px;">
+                        🔒 Política de Privacidad
+                    </a>
+                </div>
+            </div>
+
+            <!-- Checkbox obligatorio -->
+            <label id="termModalCheckLabel"
+                style="display:flex;align-items:flex-start;gap:11px;cursor:pointer;font-size:13px;color:#1e293b;line-height:1.55;padding:13px 15px;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;margin-bottom:8px;transition:background .2s,border-color .2s;">
+                <input type="checkbox" id="termModalCheckbox"
+                    style="margin-top:3px;flex-shrink:0;width:17px;height:17px;accent-color:#2563eb;cursor:pointer;"
+                    onchange="
+                        var lbl=document.getElementById('termModalCheckLabel');
+                        lbl.style.background=this.checked?'#f0fdf4':'#eff6ff';
+                        lbl.style.borderColor=this.checked?'#86efac':'#bfdbfe';
+                        document.getElementById('termModalError').style.display='none';
+                    ">
+                <span>
+                    He leído y acepto los <strong>Términos y Condiciones</strong> y la <strong>Política de Privacidad</strong>,
+                    incluido el uso de cookies, y autorizo a KuraDoc al tratamiento de mis datos
+                    para fines médicos, gestión de citas y comunicaciones relacionadas con el servicio.
+                </span>
+            </label>
+
+            <!-- Mensaje de error si intenta continuar sin marcar -->
+            <div id="termModalError"
+                style="display:none;color:#dc2626;font-size:12px;font-weight:600;margin-bottom:12px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
+                ⚠️ Debes marcar la casilla para poder continuar usando la plataforma.
+            </div>
+
+            <!-- Botón principal -->
+            <button id="termModalBtn" onclick="_aceptarTerminosPrimerAcceso()"
+                style="width:100%;padding:14px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;transition:opacity .2s,transform .15s;box-shadow:0 4px 18px rgba(37,99,235,.35);letter-spacing:.1px;"
+                onmouseover="this.style.opacity='.9';this.style.transform='translateY(-1px)'"
+                onmouseout="this.style.opacity='1';this.style.transform='none'">
+                ✅ Acepto y Continuar
+            </button>
+
+            <p style="text-align:center;font-size:11px;color:#94a3b8;margin-top:12px;margin-bottom:0;line-height:1.5;">
+                No puedes acceder al sistema sin aceptar estas políticas.<br>
+                Tu privacidad y la seguridad de tus datos son nuestra prioridad.
+            </p>
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODAL NUEVA CITA INTELIGENTE (NCI)
+     Reutiliza procesarReservaCita, renderCalendario,
+     abrirModalNuevoPaciente — sin nueva colección en Firestore
+════════════════════════════════════════════════════════════════ -->
+<div id="nci-ov">
+  <div class="nci-box" onclick="event.stopPropagation()">
+    <div class="nci-head">
+      <h2>&#128197; Nueva Cita</h2>
+      <button class="nci-x" onclick="nciCerrar()">&#215;</button>
+    </div>
+    <div class="nci-body">
+      <!-- columna izquierda -->
+      <div class="nci-L">
+        <div class="nci-sec">1 &middot; Paciente</div>
+        <div class="nci-sw" style="position:relative;">
+          <span class="nci-ico">&#128269;</span>
+          <input type="text" id="nci-pi" placeholder="Nombre, c&#233;dula o r&#233;cord..."
+            autocomplete="off" oninput="nciBP(this.value)" onfocus="nciBP(this.value)">
+          <button class="nci-plus" title="Registrar nuevo paciente" onclick="nciNuevoPac()">&#65291;</button>
+          <div class="nci-drop" id="nci-drop" style="display:none;"></div>
+        </div>
+        <div id="nci-pcard"></div>
+
+        <div class="nci-sec" style="margin-top:18px;">2 &middot; M&#233;dico</div>
+        <div class="nci-mw">
+          <button class="nci-mt" id="nci-mtrig" onclick="nciTogMed()">
+            <span id="nci-mtxt">&#8212; Seleccione un m&#233;dico &#8212;</span>
+            <span style="color:#94a3b8;font-size:11px;">&#9660;</span>
+          </button>
+          <div class="nci-ml" id="nci-mlist">
+            <div class="nci-ms">
+              <input type="text" id="nci-msi" placeholder="&#128269; Buscar por nombre o especialidad..."
+                oninput="nciFM(this.value)">
+            </div>
+            <div id="nci-mopts"></div>
+          </div>
+        </div>
+      </div>
+      <!-- columna derecha -->
+      <div class="nci-R" id="nci-rcol">
+        <div class="nci-vacio"><div class="vi">&#128203;</div>Selecciona un m&#233;dico<br>para ver disponibilidad</div>
+      </div>
+    </div>
+    <div class="nci-ft">
+      <button class="nci-can" onclick="nciCerrar()">Cancelar</button>
+      <button class="nci-ok" id="nci-ok" disabled onclick="nciGuardar()">&#10003; Confirmar Cita</button>
+    </div>
+  </div>
+</div>
+<footer class="kd-footer" style="padding: 13px 18px 15px 19px;">
+  <p>© 2026 KuraDoc · Todos los derechos reservados ·
+    <a href="terminos.html">Términos y Condiciones</a> ·
+    <a href="privacidad.html">Política de Privacidad</a>
+  </p>
+ <n> </n>
+ <n> </n>
+</footer>
+
+<!-- ── KuraDoc Navbar JS — se inicializa al final del DOM ── -->
+<script src="navbar.js"></script>
+
+</body>
+</html>
