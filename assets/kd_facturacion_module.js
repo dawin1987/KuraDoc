@@ -704,61 +704,60 @@
                 <td class="right">RD$ ${(Number(d.subtotal) || 0).toLocaleString()}</td>
             </tr>`).join('');
 
-        const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>Factura ${f.numeroFactura}</title>
+        const contenidoHTML = `
 <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Segoe UI', Arial, sans-serif; color:#1e293b; background:#f1f5f9; font-size:11.5px; }
+#facPrintOverlay, #facPrintOverlay * { margin:0; padding:0; box-sizing:border-box; }
+#facPrintOverlay {
+    position:fixed; inset:0; z-index:5000;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
+    font-family:'Segoe UI', Arial, sans-serif; color:#1e293b; background:#f1f5f9; font-size:11.5px;
+}
+@media print {
+    body > *:not(#facPrintOverlay) { display:none !important; }
+    #facPrintOverlay { position:static !important; background:#fff !important; overflow:visible !important; }
+    #facPrintOverlay .no-print { display:none !important; }
+    #facPrintOverlay .fac-sheet { box-shadow:none !important; margin:0 !important; }
     @page { size: 139.7mm 215.9mm; margin: 10mm; }
-    @media print {
-        body { background:#fff; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
-        .no-print { display:none !important; }
-        .fac-sheet { box-shadow:none !important; margin:0 !important; }
-    }
-    .fac-sheet { width:139.7mm; min-height:215.9mm; background:#fff; margin:14px auto; padding:9mm 8mm; box-shadow:0 2px 10px rgba(0,0,0,.12); position:relative; }
-    .fac-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #0f172a; padding-bottom:8px; margin-bottom:10px; }
-    .fac-logo { font-size:16px; font-weight:900; color:#0f172a; }
-    .fac-logo span { color:#2563eb; }
-    .fac-centro { font-size:8.5px; color:#64748b; margin-top:2px; line-height:1.4; max-width:150px; }
-    .fac-doc { text-align:right; }
-    .fac-doc .tag { display:inline-block; background:#0f172a; color:#fff; font-size:9.5px; font-weight:800; padding:3px 9px; border-radius:4px; margin-bottom:4px; }
-    .fac-doc .codigo { font-size:13px; font-weight:900; color:#0f172a; font-family:'Courier New',monospace; }
-    .fac-doc .fecha { font-size:8.5px; color:#64748b; margin-top:2px; }
-    .fac-estado { text-align:center; margin-bottom:10px; }
-    .fac-estado span { display:inline-block; background:${cfg.bg}; color:${cfg.color}; border:1px solid ${cfg.color}55; font-size:10px; font-weight:800; padding:3px 14px; border-radius:20px; }
-    .fac-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
-    .fac-box h4 { font-size:8.5px; text-transform:uppercase; color:#94a3b8; font-weight:800; margin-bottom:4px; }
-    .fac-box .nombre { font-size:12.5px; font-weight:700; color:#0f172a; }
-    .fac-row { display:flex; justify-content:space-between; font-size:9.5px; color:#475569; margin-top:2px; }
-    .fac-row b { color:#1e293b; }
-    table.fac-tabla { width:100%; border-collapse:collapse; margin-bottom:8px; font-size:9.5px; }
-    table.fac-tabla thead th { text-align:left; font-size:8px; text-transform:uppercase; color:#fff; background:#0f172a; padding:5px 6px; }
-    table.fac-tabla thead th.right, table.fac-tabla td.right { text-align:right; }
-    table.fac-tabla tbody td { padding:5px 6px; border-bottom:1px solid #e2e8f0; }
-    .fac-resumen .r { display:flex; justify-content:space-between; font-size:10px; color:#475569; padding:2px 2px; }
-    .fac-total { background:#0f172a; color:#fff; border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; margin:8px 0; }
-    .fac-total .lbl { font-size:9.5px; text-transform:uppercase; opacity:.75; }
-    .fac-total .val { font-size:18px; font-weight:900; color:#4ade80; }
-    .fac-pago { display:flex; justify-content:space-between; font-size:9.5px; color:#475569; margin-bottom:12px; }
-    .fac-firma { margin-top:20px; display:flex; justify-content:space-between; gap:14px; }
-    .fac-firma div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:4px; font-size:8.5px; color:#64748b; }
-    .fac-footer { position:absolute; bottom:8mm; left:8mm; right:8mm; text-align:center; font-size:7.5px; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:6px; line-height:1.5; }
-    .print-btn { display:flex; gap:8px; justify-content:center; margin-bottom:6px; flex-wrap:wrap; }
-    .print-btn button { padding:9px 16px; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
-    .print-btn button:disabled { opacity:.6; cursor:wait; }
-    .btn-print { background:#0f172a; color:#fff; }
-    .btn-share { background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; }
-    .btn-close { background:#e2e8f0; color:#1e293b; }
+}
+#facPrintOverlay .fac-sheet { width:139.7mm; min-height:215.9mm; background:#fff; margin:14px auto; padding:9mm 8mm; box-shadow:0 2px 10px rgba(0,0,0,.12); position:relative; }
+#facPrintOverlay .fac-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #0f172a; padding-bottom:8px; margin-bottom:10px; }
+#facPrintOverlay .fac-logo { font-size:16px; font-weight:900; color:#0f172a; }
+#facPrintOverlay .fac-logo span { color:#2563eb; }
+#facPrintOverlay .fac-centro { font-size:8.5px; color:#64748b; margin-top:2px; line-height:1.4; max-width:150px; }
+#facPrintOverlay .fac-doc { text-align:right; }
+#facPrintOverlay .fac-doc .tag { display:inline-block; background:#0f172a; color:#fff; font-size:9.5px; font-weight:800; padding:3px 9px; border-radius:4px; margin-bottom:4px; }
+#facPrintOverlay .fac-doc .codigo { font-size:13px; font-weight:900; color:#0f172a; font-family:'Courier New',monospace; }
+#facPrintOverlay .fac-doc .fecha { font-size:8.5px; color:#64748b; margin-top:2px; }
+#facPrintOverlay .fac-estado { text-align:center; margin-bottom:10px; }
+#facPrintOverlay .fac-estado span { display:inline-block; background:${cfg.bg}; color:${cfg.color}; border:1px solid ${cfg.color}55; font-size:10px; font-weight:800; padding:3px 14px; border-radius:20px; }
+#facPrintOverlay .fac-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
+#facPrintOverlay .fac-box h4 { font-size:8.5px; text-transform:uppercase; color:#94a3b8; font-weight:800; margin-bottom:4px; }
+#facPrintOverlay .fac-box .nombre { font-size:12.5px; font-weight:700; color:#0f172a; }
+#facPrintOverlay .fac-row { display:flex; justify-content:space-between; font-size:9.5px; color:#475569; margin-top:2px; }
+#facPrintOverlay .fac-row b { color:#1e293b; }
+#facPrintOverlay table.fac-tabla { width:100%; border-collapse:collapse; margin-bottom:8px; font-size:9.5px; }
+#facPrintOverlay table.fac-tabla thead th { text-align:left; font-size:8px; text-transform:uppercase; color:#fff; background:#0f172a; padding:5px 6px; }
+#facPrintOverlay table.fac-tabla thead th.right, #facPrintOverlay table.fac-tabla td.right { text-align:right; }
+#facPrintOverlay table.fac-tabla tbody td { padding:5px 6px; border-bottom:1px solid #e2e8f0; }
+#facPrintOverlay .fac-resumen .r { display:flex; justify-content:space-between; font-size:10px; color:#475569; padding:2px 2px; }
+#facPrintOverlay .fac-total { background:#0f172a; color:#fff; border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; margin:8px 0; }
+#facPrintOverlay .fac-total .lbl { font-size:9.5px; text-transform:uppercase; opacity:.75; }
+#facPrintOverlay .fac-total .val { font-size:18px; font-weight:900; color:#4ade80; }
+#facPrintOverlay .fac-pago { display:flex; justify-content:space-between; font-size:9.5px; color:#475569; margin-bottom:12px; }
+#facPrintOverlay .fac-firma { margin-top:20px; display:flex; justify-content:space-between; gap:14px; }
+#facPrintOverlay .fac-firma div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:4px; font-size:8.5px; color:#64748b; }
+#facPrintOverlay .fac-footer { position:absolute; bottom:8mm; left:8mm; right:8mm; text-align:center; font-size:7.5px; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:6px; line-height:1.5; }
+#facPrintOverlay .print-btn { display:flex; gap:8px; justify-content:center; padding:14px 12px 6px; flex-wrap:wrap; position:sticky; top:0; background:#f1f5f9; z-index:2; }
+#facPrintOverlay .print-btn button { padding:9px 16px; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
+#facPrintOverlay .print-btn button:disabled { opacity:.6; cursor:wait; }
+#facPrintOverlay .btn-print { background:#0f172a; color:#fff; }
+#facPrintOverlay .btn-share { background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; }
+#facPrintOverlay .btn-close { background:#e2e8f0; color:#1e293b; }
 </style>
-</head>
-<body>
 <div class="print-btn no-print">
     <button class="btn-print" onclick="window.print()">🖨️ Imprimir</button>
     <button class="btn-share" id="btnCompartirFac" onclick="_kdCompartirFactura(this)">📤 Compartir / Descargar PDF</button>
-    <button class="btn-close" onclick="window.close()">✕ Cerrar</button>
+    <button class="btn-close" onclick="document.getElementById('facPrintOverlay').remove()">✕ Cerrar</button>
 </div>
 <div class="fac-sheet">
     <div class="fac-header">
@@ -807,74 +806,93 @@
         Este documento es un recibo interno de KuraDoc y no constituye un comprobante fiscal (NCF) válido ante la DGII.<br>
         Conserve este recibo como constancia de su pago. · ${f.numeroFactura}
     </div>
-</div>
+</div>`;
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script>
-    // Genera el PDF a partir ÚNICAMENTE del nodo .fac-sheet (los botones
-    // viven fuera de ese nodo, así que nunca quedan incluidos en el PDF
-    // ni en lo que se comparte, sin depender de que el CSS de impresión
-    // se respete).
-    function _kdCompartirFactura(btn) {
-        const original = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Generando PDF...';
+        // Elimina un overlay de factura anterior si quedó abierto
+        const facAnterior = document.getElementById('facPrintOverlay');
+        if (facAnterior) facAnterior.remove();
 
-        const elemento = document.querySelector('.fac-sheet');
-        const prevShadow = elemento.style.boxShadow;
-        const prevMargin = elemento.style.margin;
-        elemento.style.boxShadow = 'none';
-        elemento.style.margin = '0';
-
-        const nombreArchivo = 'Factura_${f.numeroFactura}.pdf';
-        const opciones = {
-            margin: 0,
-            filename: nombreArchivo,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: 'mm', format: [139.7, 215.9], orientation: 'portrait' }
-        };
-
-        html2pdf().set(opciones).from(elemento).outputPdf('blob').then(function (blob) {
-            elemento.style.boxShadow = prevShadow;
-            elemento.style.margin = prevMargin;
-
-            const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
-            if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-                navigator.share({
-                    files: [archivo],
-                    title: 'Factura ${f.numeroFactura}',
-                    text: 'Factura ${f.numeroFactura}'
-                }).catch(function () {});
-            } else {
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = nombreArchivo;
-                document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-            }
-            btn.disabled = false;
-            btn.innerHTML = original;
-        }).catch(function (err) {
-            elemento.style.boxShadow = prevShadow;
-            elemento.style.margin = prevMargin;
-            console.error('Error generando PDF:', err);
-            alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
-            btn.disabled = false;
-            btn.innerHTML = original;
+        // Inyecta el overlay DIRECTAMENTE en la página actual (sin window.open).
+        // Esto evita por completo el bloqueador de ventanas emergentes y el
+        // comportamiento inestable de window.open() dentro de la PWA instalada
+        // en Android (donde no hay "chrome" de navegador para mostrar la
+        // ventana nueva y termina cerrándose sola).
+        const facOverlay = document.createElement('div');
+        facOverlay.id = 'facPrintOverlay';
+        facOverlay.innerHTML = contenidoHTML;
+        facOverlay.addEventListener('click', function (e) {
+            if (e.target === facOverlay) facOverlay.remove();
         });
-    }
-</script>
-</body>
-</html>`;
+        document.body.appendChild(facOverlay);
 
-        const ventana = window.open('', '_blank', 'width=560,height=760');
-        if (!ventana) {
-            window._mostrarToast('El navegador bloqueó la ventana emergente. Permite ventanas emergentes para este sitio.', 'error');
-            return;
+        // Carga html2pdf.js solo una vez (bajo demanda) — antes se cargaba
+        // vía <script src> dentro del documento de la ventana emergente.
+        function _kdCargarHtml2Pdf() {
+            if (window.html2pdf) return Promise.resolve();
+            if (window._kdHtml2PdfLoading) return window._kdHtml2PdfLoading;
+            window._kdHtml2PdfLoading = new Promise(function (resolve, reject) {
+                const s = document.createElement('script');
+                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                s.onload = function () { resolve(); };
+                s.onerror = function () { reject(new Error('No se pudo cargar html2pdf')); };
+                document.head.appendChild(s);
+            });
+            return window._kdHtml2PdfLoading;
         }
-        ventana.document.write(html);
-        ventana.document.close();
+
+        // Genera el PDF a partir ÚNICAMENTE del nodo .fac-sheet dentro del
+        // overlay (los botones viven fuera de ese nodo, así que nunca quedan
+        // incluidos en el PDF ni en lo que se comparte).
+        window._kdCompartirFactura = async function (btn) {
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Generando PDF...';
+
+            try {
+                await _kdCargarHtml2Pdf();
+
+                const elemento = facOverlay.querySelector('.fac-sheet');
+                const prevShadow = elemento.style.boxShadow;
+                const prevMargin = elemento.style.margin;
+                elemento.style.boxShadow = 'none';
+                elemento.style.margin = '0';
+
+                const nombreArchivo = 'Factura_' + f.numeroFactura + '.pdf';
+                const opciones = {
+                    margin: 0,
+                    filename: nombreArchivo,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true },
+                    jsPDF: { unit: 'mm', format: [139.7, 215.9], orientation: 'portrait' }
+                };
+
+                const blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
+
+                elemento.style.boxShadow = prevShadow;
+                elemento.style.margin = prevMargin;
+
+                const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
+                if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+                    await navigator.share({
+                        files: [archivo],
+                        title: 'Factura ' + f.numeroFactura,
+                        text: 'Factura ' + f.numeroFactura
+                    }).catch(function () {});
+                } else {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = nombreArchivo;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+                }
+            } catch (err) {
+                console.error('Error generando PDF:', err);
+                alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        };
     };
 
 })();
