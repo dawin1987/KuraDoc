@@ -898,9 +898,13 @@ window.ejecutarImpresion = function(html, ancho) {
         document.head.appendChild(st);
     }
 
-    // El script de QR dentro de la plantilla ya hace window.print() por su cuenta;
-    // aquí como respaldo extra si QR no carga o tarda:
-    setTimeout(() => { try { window.focus(); window.print(); } catch(e){} }, 600);
+    // La plantilla ya trae su propio botón "🖨️ Imprimir / Guardar PDF"
+    // (onclick="window.print()"), que es un clic real del usuario y por
+    // eso nunca lo bloquea el navegador. NO disparamos window.print()
+    // automáticamente aquí: Chrome bloquea toda impresión que no venga
+    // de un clic directo, mostrando "Se impidió que este sitio imprima
+    // automáticamente" — que es justo lo que pasaba con el setTimeout
+    // que existía antes en este lugar.
 };
 
 // ══════════════════════════════════════════════════════════════════
