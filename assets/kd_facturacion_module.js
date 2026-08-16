@@ -665,8 +665,10 @@
 
 
     // ══════════════════════════════════════════════════════════════
-    //  IMPRESIÓN — ventana media carta (5.5 x 8.5 in), consistente
-    //  con el resto del sistema de impresión de KuraDoc.
+    //  IMPRESIÓN — hoja A4 (210 x 297 mm), elegante y con modal
+    //  100% responsive para verse bien tanto en escritorio como en
+    //  smartphone (sin depender del truco de "sin viewport" de la
+    //  ventana emergente de la cita).
     // ══════════════════════════════════════════════════════════════
     window._facImprimirFactura = async function (facturaId) {
         let f;
@@ -709,47 +711,62 @@
 #facPrintOverlay, #facPrintOverlay * { margin:0; padding:0; box-sizing:border-box; }
 #facPrintOverlay {
     position:fixed; inset:0; z-index:5000;
-    overflow-y:auto; -webkit-overflow-scrolling:touch;
-    font-family:'Segoe UI', Arial, sans-serif; color:#1e293b; background:#f1f5f9; font-size:11.5px;
+    overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch;
+    font-family:'Segoe UI', Arial, sans-serif; color:#1e293b; background:#f1f5f9; font-size:12.5px;
 }
 @media print {
     body > *:not(#facPrintOverlay) { display:none !important; }
     #facPrintOverlay { position:static !important; background:#fff !important; overflow:visible !important; }
     #facPrintOverlay .no-print { display:none !important; }
-    #facPrintOverlay .fac-sheet { box-shadow:none !important; margin:0 !important; }
-    @page { size: 139.7mm 215.9mm; margin: 10mm; }
+    #facPrintOverlay .fac-sheet { box-shadow:none !important; margin:0 !important; width:auto !important; max-width:none !important; min-height:auto !important; }
+    @page { size: A4; margin: 15mm 14mm; }
 }
-#facPrintOverlay .fac-sheet { width:139.7mm; min-height:215.9mm; background:#fff; margin:14px auto; padding:9mm 8mm; box-shadow:0 2px 10px rgba(0,0,0,.12); position:relative; }
-#facPrintOverlay .fac-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #0f172a; padding-bottom:8px; margin-bottom:10px; }
-#facPrintOverlay .fac-logo { font-size:16px; font-weight:900; color:#0f172a; }
+/* Hoja A4 (210mm), fluida en pantalla: nunca excede el ancho del
+   dispositivo (así se ve completa y centrada en un smartphone) y
+   crece hasta el tamaño real de A4 en pantallas grandes / al imprimir. */
+#facPrintOverlay .fac-sheet {
+    width:100%; max-width:210mm; min-height:auto;
+    background:#fff; margin:14px auto;
+    padding:9mm clamp(14px, 5vw, 14mm);
+    box-shadow:0 2px 10px rgba(0,0,0,.12); position:relative;
+}
+#facPrintOverlay .fac-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #0f172a; padding-bottom:10px; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
+#facPrintOverlay .fac-logo { font-size:19px; font-weight:900; color:#0f172a; }
 #facPrintOverlay .fac-logo span { color:#2563eb; }
-#facPrintOverlay .fac-centro { font-size:8.5px; color:#64748b; margin-top:2px; line-height:1.4; max-width:150px; }
+#facPrintOverlay .fac-centro { font-size:9.5px; color:#64748b; margin-top:3px; line-height:1.4; max-width:220px; }
 #facPrintOverlay .fac-doc { text-align:right; }
-#facPrintOverlay .fac-doc .tag { display:inline-block; background:#0f172a; color:#fff; font-size:9.5px; font-weight:800; padding:3px 9px; border-radius:4px; margin-bottom:4px; }
-#facPrintOverlay .fac-doc .codigo { font-size:13px; font-weight:900; color:#0f172a; font-family:'Courier New',monospace; }
-#facPrintOverlay .fac-doc .fecha { font-size:8.5px; color:#64748b; margin-top:2px; }
-#facPrintOverlay .fac-estado { text-align:center; margin-bottom:10px; }
-#facPrintOverlay .fac-estado span { display:inline-block; background:${cfg.bg}; color:${cfg.color}; border:1px solid ${cfg.color}55; font-size:10px; font-weight:800; padding:3px 14px; border-radius:20px; }
-#facPrintOverlay .fac-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
-#facPrintOverlay .fac-box h4 { font-size:8.5px; text-transform:uppercase; color:#94a3b8; font-weight:800; margin-bottom:4px; }
-#facPrintOverlay .fac-box .nombre { font-size:12.5px; font-weight:700; color:#0f172a; }
-#facPrintOverlay .fac-row { display:flex; justify-content:space-between; font-size:9.5px; color:#475569; margin-top:2px; }
+#facPrintOverlay .fac-doc .tag { display:inline-block; background:#0f172a; color:#fff; font-size:10.5px; font-weight:800; padding:4px 11px; border-radius:4px; margin-bottom:5px; }
+#facPrintOverlay .fac-doc .codigo { font-size:14px; font-weight:900; color:#0f172a; font-family:'Courier New',monospace; }
+#facPrintOverlay .fac-doc .fecha { font-size:9.5px; color:#64748b; margin-top:2px; }
+#facPrintOverlay .fac-estado { text-align:center; margin-bottom:14px; }
+#facPrintOverlay .fac-estado span { display:inline-block; background:${cfg.bg}; color:${cfg.color}; border:1px solid ${cfg.color}55; font-size:11px; font-weight:800; padding:4px 16px; border-radius:20px; }
+#facPrintOverlay .fac-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+#facPrintOverlay .fac-box h4 { font-size:9.5px; text-transform:uppercase; color:#94a3b8; font-weight:800; margin-bottom:5px; }
+#facPrintOverlay .fac-box .nombre { font-size:14px; font-weight:700; color:#0f172a; }
+#facPrintOverlay .fac-row { display:flex; justify-content:space-between; font-size:10.5px; color:#475569; margin-top:3px; }
 #facPrintOverlay .fac-row b { color:#1e293b; }
-#facPrintOverlay table.fac-tabla { width:100%; border-collapse:collapse; margin-bottom:8px; font-size:9.5px; }
-#facPrintOverlay table.fac-tabla thead th { text-align:left; font-size:8px; text-transform:uppercase; color:#fff; background:#0f172a; padding:5px 6px; }
+#facPrintOverlay table.fac-tabla { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:10.5px; }
+#facPrintOverlay table.fac-tabla thead th { text-align:left; font-size:9px; text-transform:uppercase; color:#fff; background:#0f172a; padding:7px 8px; }
 #facPrintOverlay table.fac-tabla thead th.right, #facPrintOverlay table.fac-tabla td.right { text-align:right; }
-#facPrintOverlay table.fac-tabla tbody td { padding:5px 6px; border-bottom:1px solid #e2e8f0; }
-#facPrintOverlay .fac-resumen .r { display:flex; justify-content:space-between; font-size:10px; color:#475569; padding:2px 2px; }
-#facPrintOverlay .fac-total { background:#0f172a; color:#fff; border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; margin:8px 0; }
-#facPrintOverlay .fac-total .lbl { font-size:9.5px; text-transform:uppercase; opacity:.75; }
-#facPrintOverlay .fac-total .val { font-size:18px; font-weight:900; color:#4ade80; }
-#facPrintOverlay .fac-pago { display:flex; justify-content:space-between; font-size:9.5px; color:#475569; margin-bottom:12px; }
-#facPrintOverlay .fac-firma { margin-top:20px; display:flex; justify-content:space-between; gap:14px; }
-#facPrintOverlay .fac-firma div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:4px; font-size:8.5px; color:#64748b; }
-#facPrintOverlay .fac-footer { position:absolute; bottom:8mm; left:8mm; right:8mm; text-align:center; font-size:7.5px; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:6px; line-height:1.5; }
+#facPrintOverlay table.fac-tabla tbody td { padding:7px 8px; border-bottom:1px solid #e2e8f0; }
+#facPrintOverlay .fac-resumen .r { display:flex; justify-content:space-between; font-size:11px; color:#475569; padding:3px 2px; }
+#facPrintOverlay .fac-total { background:#0f172a; color:#fff; border-radius:8px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; margin:10px 0; }
+#facPrintOverlay .fac-total .lbl { font-size:10.5px; text-transform:uppercase; opacity:.75; }
+#facPrintOverlay .fac-total .val { font-size:20px; font-weight:900; color:#4ade80; }
+#facPrintOverlay .fac-pago { display:flex; justify-content:space-between; font-size:10.5px; color:#475569; margin-bottom:14px; flex-wrap:wrap; gap:4px; }
+#facPrintOverlay .fac-firma { margin-top:26px; display:flex; justify-content:space-between; gap:14px; }
+#facPrintOverlay .fac-firma div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:5px; font-size:9.5px; color:#64748b; }
+#facPrintOverlay .fac-footer { margin-top:18px; text-align:center; font-size:8.5px; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:8px; line-height:1.5; }
 #facPrintOverlay .print-btn { display:flex; gap:8px; justify-content:center; padding:14px 12px 6px; flex-wrap:wrap; position:sticky; top:0; background:#f1f5f9; z-index:2; }
 #facPrintOverlay .print-btn button { padding:9px 16px; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
 #facPrintOverlay .print-btn button:disabled { opacity:.6; cursor:wait; }
+@media (max-width:420px) {
+    #facPrintOverlay { font-size:11.5px; }
+    #facPrintOverlay .fac-sheet { padding:8mm 12px; margin:8px auto; }
+    #facPrintOverlay .fac-logo { font-size:17px; }
+    #facPrintOverlay .fac-total .val { font-size:18px; }
+    #facPrintOverlay .print-btn button { padding:8px 12px; font-size:11.5px; }
+}
 #facPrintOverlay .btn-print { background:#0f172a; color:#fff; }
 #facPrintOverlay .btn-share { background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; }
 #facPrintOverlay .btn-close { background:#e2e8f0; color:#1e293b; }
@@ -848,39 +865,39 @@
             btn.disabled = true;
             btn.innerHTML = '⏳ Generando PDF...';
 
-            // El overlay es position:fixed + overflow-y:auto (para poder verlo
-            // y hacer scroll en pantalla). html2canvas captura según la
-            // posición/scroll real del elemento, y con un contenedor fixed +
-            // scroll casi siempre termina capturando mal o en blanco.
-            // Por eso lo "aplanamos" solo durante la captura y lo restauramos
-            // apenas termina, sin que el usuario note ningún cambio visual.
-            const prevOverlayPosition = facOverlay.style.position;
-            const prevOverlayOverflow = facOverlay.style.overflow;
-            const prevOverlayInset = facOverlay.style.inset;
-            facOverlay.style.position = 'static';
-            facOverlay.style.overflow = 'visible';
-            facOverlay.style.inset = 'auto';
-            window.scrollTo(0, 0);
-
-            const elemento = facOverlay.querySelector('.fac-sheet');
-            const prevShadow = elemento.style.boxShadow;
-            const prevMargin = elemento.style.margin;
-            elemento.style.boxShadow = 'none';
-            elemento.style.margin = '0';
-
             try {
                 await _kdCargarHtml2Pdf();
+
+                const elemento = facOverlay.querySelector('.fac-sheet');
+                const prevShadow   = elemento.style.boxShadow;
+                const prevMargin   = elemento.style.margin;
+                const prevWidth    = elemento.style.width;
+                const prevMaxWidth = elemento.style.maxWidth;
+                // Se fija el ancho real de A4 antes de capturar: en pantalla
+                // el recibo es fluido (para verse bien en un smartphone),
+                // pero el PDF/impresión siempre debe salir en tamaño A4
+                // completo y con las proporciones correctas, sin importar
+                // el ancho de la pantalla desde la que se generó.
+                elemento.style.boxShadow = 'none';
+                elemento.style.margin = '0';
+                elemento.style.width = '210mm';
+                elemento.style.maxWidth = 'none';
 
                 const nombreArchivo = 'Factura_' + f.numeroFactura + '.pdf';
                 const opciones = {
                     margin: 0,
                     filename: nombreArchivo,
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
-                    jsPDF: { unit: 'mm', format: [139.7, 215.9], orientation: 'portrait' }
+                    html2canvas: { scale: 2, useCORS: true, windowWidth: elemento.scrollWidth },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 };
 
                 const blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
+
+                elemento.style.boxShadow = prevShadow;
+                elemento.style.margin = prevMargin;
+                elemento.style.width = prevWidth;
+                elemento.style.maxWidth = prevMaxWidth;
 
                 const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
                 if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
@@ -900,12 +917,6 @@
                 console.error('Error generando PDF:', err);
                 alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
             } finally {
-                // Restaurar el overlay y el estilo del elemento a como estaban
-                facOverlay.style.position = prevOverlayPosition;
-                facOverlay.style.overflow = prevOverlayOverflow;
-                facOverlay.style.inset = prevOverlayInset;
-                elemento.style.boxShadow = prevShadow;
-                elemento.style.margin = prevMargin;
                 btn.disabled = false;
                 btn.innerHTML = original;
             }
