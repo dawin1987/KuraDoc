@@ -630,7 +630,7 @@ body{
                  border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
     🖨️ Imprimir / Guardar PDF
   </button>
-  <button onclick="window.close()"
+  <button onclick="document.getElementById('kdPrintOverlay') ? document.getElementById('kdPrintOverlay').remove() : window.close()"
           style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;
                  padding:4px 20px;border-radius:8px;font-size:14px;cursor:pointer;">
     ✕ Cerrar
@@ -860,24 +860,47 @@ body{
 // ══════════════════════════════════════════════════════════════════
 
 /**
- * Abre ventana y ejecuta window.print() con el HTML dado.
- * @param {string} html  - HTML completo de la plantilla
- * @param {string} ancho - '360px' para 80mm, '800px' para carta
+ * Inserta el HTML del ticket en un overlay dentro de la MISMA página y
+ * ejecuta window.print() sobre el documento actual (en vez de abrir una
+ * ventana nueva con window.open).
+ *
+ * Motivo del cambio: en la PWA instalada (modo standalone, Android) no hay
+ * "chrome" de navegador donde mostrar una ventana emergente nueva — Chrome
+ * la abre y la cierra sola de inmediato, devolviendo al usuario a la app.
+ * Usando un overlay + @media print con visibilidad restringida al ticket,
+ * el comportamiento es idéntico en navegador normal y en la app instalada.
+ *
+ * @param {string} html  - HTML completo de la plantilla (incluye su propio <style>)
+ * @param {string} ancho - '360px' para 80mm, '800px' para carta (solo referencia visual)
  */
 window.ejecutarImpresion = function(html, ancho) {
-    ancho = ancho || '800px';
-    const win = window.open('', '_blank', `width=${parseInt(ancho)},height=700,scrollbars=yes`);
-    if (!win) {
-        alert('Por favor permite ventanas emergentes para imprimir.');
-        return;
-    }
-    win.document.write(html);
-    win.document.close();
-    // El script de QR ya hace window.print() dentro del HTML,
-    // aquí como respaldo extra si QR no carga:
-    win.addEventListener('load', () => {
-        setTimeout(() => { try { win.focus(); win.print(); } catch(e){} }, 600);
+    const anterior = document.getElementById('kdPrintOverlay');
+    if (anterior) anterior.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'kdPrintOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:6000;overflow:auto;background:#e5e7eb;-webkit-overflow-scrolling:touch;';
+    overlay.innerHTML = html;
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
     });
+    document.body.appendChild(overlay);
+
+    // CSS de impresión: oculta todo lo demás de la app y muestra solo el overlay
+    if (!document.getElementById('kd-print-overlay-styles')) {
+        const st = document.createElement('style');
+        st.id = 'kd-print-overlay-styles';
+        st.textContent = `
+@media print {
+  body > *:not(#kdPrintOverlay) { display:none !important; }
+  #kdPrintOverlay { position:static !important; overflow:visible !important; background:none !important; }
+}`;
+        document.head.appendChild(st);
+    }
+
+    // El script de QR dentro de la plantilla ya hace window.print() por su cuenta;
+    // aquí como respaldo extra si QR no carga o tarda:
+    setTimeout(() => { try { window.focus(); window.print(); } catch(e){} }, 600);
 };
 
 // ══════════════════════════════════════════════════════════════════
