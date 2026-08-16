@@ -710,7 +710,7 @@
 <style>
 #facPrintOverlay, #facPrintOverlay * { margin:0; padding:0; box-sizing:border-box; }
 #facPrintOverlay {
-    position:fixed; inset:0; z-index:5000;
+    position:fixed; inset:0; z-index:9999;
     overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch;
     font-family:'Segoe UI', Arial, sans-serif; color:#1e293b; background:#f1f5f9; font-size:12.5px;
 }
