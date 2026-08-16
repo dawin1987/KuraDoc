@@ -848,28 +848,39 @@
             btn.disabled = true;
             btn.innerHTML = '⏳ Generando PDF...';
 
+            // El overlay es position:fixed + overflow-y:auto (para poder verlo
+            // y hacer scroll en pantalla). html2canvas captura según la
+            // posición/scroll real del elemento, y con un contenedor fixed +
+            // scroll casi siempre termina capturando mal o en blanco.
+            // Por eso lo "aplanamos" solo durante la captura y lo restauramos
+            // apenas termina, sin que el usuario note ningún cambio visual.
+            const prevOverlayPosition = facOverlay.style.position;
+            const prevOverlayOverflow = facOverlay.style.overflow;
+            const prevOverlayInset = facOverlay.style.inset;
+            facOverlay.style.position = 'static';
+            facOverlay.style.overflow = 'visible';
+            facOverlay.style.inset = 'auto';
+            window.scrollTo(0, 0);
+
+            const elemento = facOverlay.querySelector('.fac-sheet');
+            const prevShadow = elemento.style.boxShadow;
+            const prevMargin = elemento.style.margin;
+            elemento.style.boxShadow = 'none';
+            elemento.style.margin = '0';
+
             try {
                 await _kdCargarHtml2Pdf();
-
-                const elemento = facOverlay.querySelector('.fac-sheet');
-                const prevShadow = elemento.style.boxShadow;
-                const prevMargin = elemento.style.margin;
-                elemento.style.boxShadow = 'none';
-                elemento.style.margin = '0';
 
                 const nombreArchivo = 'Factura_' + f.numeroFactura + '.pdf';
                 const opciones = {
                     margin: 0,
                     filename: nombreArchivo,
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, useCORS: true },
+                    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
                     jsPDF: { unit: 'mm', format: [139.7, 215.9], orientation: 'portrait' }
                 };
 
                 const blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
-
-                elemento.style.boxShadow = prevShadow;
-                elemento.style.margin = prevMargin;
 
                 const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
                 if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
@@ -889,6 +900,12 @@
                 console.error('Error generando PDF:', err);
                 alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
             } finally {
+                // Restaurar el overlay y el estilo del elemento a como estaban
+                facOverlay.style.position = prevOverlayPosition;
+                facOverlay.style.overflow = prevOverlayOverflow;
+                facOverlay.style.inset = prevOverlayInset;
+                elemento.style.boxShadow = prevShadow;
+                elemento.style.margin = prevMargin;
                 btn.disabled = false;
                 btn.innerHTML = original;
             }
