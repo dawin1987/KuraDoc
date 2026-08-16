@@ -2,18 +2,19 @@
   "name": "KuraDoc",
   "short_name": "KuraDoc",
   "start_url": "index.html",
+  "id": "/KuraDoc/index.html",
   "display": "standalone",
   "theme_color": "#b60000",
   "background_color": "#b60000",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "icon-azul.png",
+      "src": "icons/icon-azul.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "icon-azul-2.png",
+      "src": "icons/icon-azul-2.png",
       "sizes": "512x512",
       "type": "image/png"
     }
