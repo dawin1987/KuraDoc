@@ -30,6 +30,35 @@
         return 'ln' + (++_facContadorLinea) + '_' + Date.now().toString(36);
     }
 
+    // ── Logo del médico en el encabezado de la factura ──────────────
+    // Reutiliza window._facLogoHeaderHTML, definida una sola vez en
+    // app_logic.js (junto a generarFacturaCita), para no duplicar esta
+    // lógica en cada archivo de facturación. Incluye un fallback local
+    // por si este módulo llegara a cargarse antes que app_logic.js.
+    function _facLogoHeaderHTML(medico) {
+        if (typeof window._facLogoHeaderHTML === 'function') return window._facLogoHeaderHTML(medico);
+        const url = medico?.logoEspecialidadUrl;
+        return url
+            ? `<img src="${url}" alt="Logo" class="fac-logo-img">`
+            : `<div class="fac-logo">Kura<span>Doc</span></div>`;
+    }
+
+    // ── Firma digital del médico en el pie de la factura ─────────────
+    // Igual que el logo: reutiliza window._facFirmaMedicoHTML (definida
+    // una sola vez en app_logic.js). Siempre se le pasa el "medico"
+    // dueño de la factura (f.medicoId), nunca appState.currentUserData,
+    // así la firma correcta sale automática tanto si factura el propio
+    // médico como si factura una secretaria que trabaja para varios
+    // médicos distintos.
+    function _facFirmaMedicoHTML(medico, emisor) {
+        if (typeof window._facFirmaMedicoHTML === 'function') return window._facFirmaMedicoHTML(medico, emisor);
+        const firmaImg = medico?.firmaDigitalUrl
+            ? `<img src="${medico.firmaDigitalUrl}" alt="Firma" class="fac-firma-img" style="margin-top: -50px; top: 10px;">`
+            : '';
+        const nombreMedico = medico?.nombre ? `Dr(a). ${medico.nombre}` : 'Firma del médico';
+        return `<div class="fac-firma-medico">${firmaImg}<div class="fac-firma-nombre">${nombreMedico}</div></div>`;
+    }
+
 
     // ══════════════════════════════════════════════════════════════
     //  CATÁLOGO DE SERVICIOS — carga perezosa y compartida
@@ -733,7 +762,8 @@
 #facPrintOverlay .fac-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #0f172a; padding-bottom:10px; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
 #facPrintOverlay .fac-logo { font-size:19px; font-weight:900; color:#0f172a; }
 #facPrintOverlay .fac-logo span { color:#2563eb; }
-#facPrintOverlay .fac-centro { font-size:9.5px; color:#64748b; margin-top:3px; line-height:1.4; max-width:220px; }
+#facPrintOverlay .fac-logo-img { max-height:58px; max-width:170px; object-fit:contain; display:block; }
+#facPrintOverlay .fac-centro {font-weight: 600; font-size:12px; color:#64748b; margin-top:1px; line-height:1.2; max-width:220px; }
 #facPrintOverlay .fac-doc { text-align:right; }
 #facPrintOverlay .fac-doc .tag { display:inline-block; background:#0f172a; color:#fff; font-size:10.5px; font-weight:800; padding:4px 11px; border-radius:4px; margin-bottom:5px; }
 #facPrintOverlay .fac-doc .codigo { font-size:14px; font-weight:900; color:#0f172a; font-family:'Courier New',monospace; }
@@ -754,9 +784,13 @@
 #facPrintOverlay .fac-total .lbl { font-size:10.5px; text-transform:uppercase; opacity:.75; }
 #facPrintOverlay .fac-total .val { font-size:20px; font-weight:900; color:#4ade80; }
 #facPrintOverlay .fac-pago { display:flex; justify-content:space-between; font-size:10.5px; color:#475569; margin-bottom:14px; flex-wrap:wrap; gap:4px; }
-#facPrintOverlay .fac-firma { margin-top:26px; display:flex; justify-content:space-between; gap:14px; }
-#facPrintOverlay .fac-firma div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:5px; font-size:9.5px; color:#64748b; }
-#facPrintOverlay .fac-footer { margin-top:18px; text-align:center; font-size:8.5px; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:8px; line-height:1.5; }
+#facPrintOverlay .fac-firma { margin-top:86px; display:flex; justify-content:space-between; gap:14px; }
+#facPrintOverlay .fac-firma > div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:5px; font-size:9.5px; color:#64748b; }
+#facPrintOverlay .fac-firma-img { display:block; max-height:48px; max-width:170px; object-fit:contain;     margin: -50px auto auto auto;
+ }
+#facPrintOverlay .fac-firma-nombre {padding-top: 3px; font-weight:700; color:#1e293b; font-size:10px; }
+#facPrintOverlay .fac-firma-sub { margin-top:2px; font-size:8.5px; color:#94a3b8; }
+#facPrintOverlay .fac-footer { margin-top:58px; text-align:center; font-size:8.9px; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:8px; line-height:1.5; }
 #facPrintOverlay .print-btn { display:flex; gap:8px; justify-content:center; padding:14px 12px 6px; flex-wrap:wrap; position:sticky; top:0; background:#f1f5f9; z-index:2; }
 #facPrintOverlay .print-btn button { padding:9px 16px; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
 #facPrintOverlay .print-btn button:disabled { opacity:.6; cursor:wait; }
@@ -766,10 +800,19 @@
     #facPrintOverlay .fac-logo { font-size:17px; }
     #facPrintOverlay .fac-total .val { font-size:18px; }
     #facPrintOverlay .print-btn button { padding:8px 12px; font-size:11.5px; }
+    #facPrintOverlay .fac-header-logo {gap: 10px; display: flex; justify-content: flex-start; justify-items: start; align-items: center; flex-wrap: nowrap; flex-direction: column;}
 }
+ 
+  @media (max-width:620px) {
+  
+    #facPrintOverlay .fac-header-logo {gap: 10px; display: flex; justify-content: flex-start; justify-items: start; align-items: center; flex-wrap: nowrap; flex-direction: column;}
+}
+ 
 #facPrintOverlay .btn-print { background:#0f172a; color:#fff; }
 #facPrintOverlay .btn-share { background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; }
 #facPrintOverlay .btn-close { background:#e2e8f0; color:#1e293b; }
+#facPrintOverlay .fac-header-logo {gap: 10px; display: flex; justify-content: flex-start; justify-items: start; align-items: center; flex-wrap: nowrap;}
+
 </style>
 <div class="print-btn no-print">
     <button class="btn-print" onclick="window.print()">🖨️ Imprimir</button>
@@ -778,8 +821,8 @@
 </div>
 <div class="fac-sheet">
     <div class="fac-header">
-        <div>
-            <div class="fac-logo">Kura<span>Doc</span></div>
+        <div class="fac-header-logo">
+            ${_facLogoHeaderHTML(medico)}
             <div class="fac-centro">${centro?.nombre || 'KuraDoc'}${centro?.direccion ? '<br>' + centro.direccion : ''}${centro?.telefono ? '<br>Tel: ' + centro.telefono : ''}</div>
         </div>
         <div class="fac-doc">
@@ -817,7 +860,7 @@
     ${f.observacion ? `<div style="font-size:9.5px;color:#64748b;margin-bottom:10px;"><b>Obs.:</b> ${f.observacion}</div>` : ''}
     <div class="fac-firma">
         <div>Firma del paciente</div>
-        <div>Facturado por: ${emisor?.nombre || '—'}</div>
+        ${_facFirmaMedicoHTML(medico, emisor)}
     </div>
     <div class="fac-footer">
         Este documento es un recibo interno de KuraDoc y no constituye un comprobante fiscal (NCF) válido ante la DGII.<br>
