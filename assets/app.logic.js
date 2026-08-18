@@ -2200,6 +2200,29 @@ async function renderMedicos() {
                                             onchange="_previewFoto(this,'prev-logo-esp','lbl-logo-esp','logo')">
                                     </div>
                                 </div>
+
+                                <!-- Firma digital -->
+                                <div>
+                                    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">
+                                        ✍️ Firma digital <span style="color:#94a3b8;font-weight:400;">(se usa en facturas, recetas y documentos que emite el médico)</span>
+                                    </div>
+                                    <div class="foto-upload-wrap" onclick="document.getElementById('medicoFirmaDigital').click()">
+                                        <div class="logo-preview" id="prev-firma-digital">
+                                            ${datos?.firmaDigitalUrl ? '<img src="' + datos.firmaDigitalUrl + '" alt="firma" style="width:100%;height:100%;object-fit:contain;">' : '\xe2\x9c\x8d\xef\xb8\x8f'}
+                                        </div>
+                                        <div class="foto-upload-info">
+                                            <div class="foto-upload-label" id="lbl-firma-digital">
+                                                ${datos?.firmaDigitalUrl ? 'Firma actual — clic para cambiar' : 'Clic para subir firma digital'}
+                                            </div>
+                                            <div class="foto-upload-sub">PNG con fondo transparente recomendado · Máx. 1 MB</div>
+                                            <div class="foto-upload-progress" id="prog-firma-digital">
+                                                <div class="foto-upload-progress-bar" id="progbar-firma-digital"></div>
+                                            </div>
+                                        </div>
+                                        <input type="file" id="medicoFirmaDigital" accept="image/*"
+                                            onchange="_previewFoto(this,'prev-firma-digital','lbl-firma-digital','firma')">
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -2336,8 +2359,10 @@ async function submitMedico(e, medicoId = null) {
     const _targetUid      = medicoId || ('new_' + Date.now());
     const fotoPerfilFile  = document.getElementById('medicoFotoPerfil')?.files?.[0];
     const logoEspFile     = document.getElementById('medicoLogoEsp')?.files?.[0];
+    const firmaDigFile    = document.getElementById('medicoFirmaDigital')?.files?.[0];
     let fotoUrlNueva = null;
     let logoUrlNueva = null;
+    let firmaUrlNueva = null;
  
     if (fotoPerfilFile) {
         _setProgress('prog-foto-perfil', 'progbar-foto-perfil', true);
@@ -2352,6 +2377,13 @@ async function submitMedico(e, medicoId = null) {
             _setProgressBar('progbar-logo-esp', p);
         });
         _setProgress('prog-logo-esp', 'progbar-logo-esp', false);
+    }
+    if (firmaDigFile) {
+        _setProgress('prog-firma-digital', 'progbar-firma-digital', true);
+        firmaUrlNueva = await _subirFotoStorage(firmaDigFile, `medicos/${_targetUid}/firma_digital`, (p) => {
+            _setProgressBar('progbar-firma-digital', p);
+        });
+        _setProgress('prog-firma-digital', 'progbar-firma-digital', false);
     }
  
     // Datos específicos del médico
@@ -2382,6 +2414,7 @@ async function submitMedico(e, medicoId = null) {
         ultimaModificacion: firebase.firestore.FieldValue.serverTimestamp(),
         ...(fotoUrlNueva ? { fotoUrl: fotoUrlNueva } : {}),
         ...(logoUrlNueva ? { logoEspecialidadUrl: logoUrlNueva } : {}),
+        ...(firmaUrlNueva ? { firmaDigitalUrl: firmaUrlNueva } : {}),
     };
  
     try {
@@ -2557,6 +2590,44 @@ async function renderAgenda() {
 
     // 2. RENDERIZADO DE LA ESTRUCTURA
     mainContainer.innerHTML = `
+<style>
+    /* ── Expediente Digital: overlay sobre SALA solo en smartphone ──
+       En PC/tablet (>768px) el diseño se queda igual: lista a la
+       izquierda y expediente a la derecha, sin ningún cambio. Solo en
+       pantallas de teléfono el expediente se sobrepone en pantalla
+       completa al tocar una cita, para que el médico no tenga que
+       hacer scroll hacia abajo para verlo. */
+    @media (max-width: 768px) {
+        .card-citas-expediente { position: relative; }
+        #panelInspeccionCita.pic-mobile-overlay {
+           
+             margin: 50px 10px 10px 10px;
+            position: fixed; inset: 0; z-index: 3000;
+            background: #fff; overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            animation: picSlideIn .22s ease-out;
+        }
+        #panelInspeccionCita.pic-mobile-overlay .cardpanelInspeccionCita {
+            min-height: 100%; height: auto; border-radius: 0;
+        }
+        /* La ficha resumen y la línea de tiempo se apilan como una
+           sola página que se desplaza junto con el overlay (un solo
+           scroll, no uno adentro de otro). Así el dedo siempre puede
+           seguir bajando y ver todo el historial del paciente. */
+        #panelInspeccionCita.pic-mobile-overlay .card-panelCitasExpediente {
+            display: block;
+        }
+        #panelInspeccionCita.pic-mobile-overlay .card-lineaTiempoHistorico {
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+        }
+    }
+    @keyframes picSlideIn {
+        from { transform: translateX(100%); }
+        to   { transform: translateX(0); }
+    }
+</style>
 
 <div style="gap: 10px; background: #fcfcfc; display: flex; justify-content: stretch; align-items: center; margin-bottom: 6px; grid-auto-flow: row;">  
       
@@ -2845,8 +2916,15 @@ async function mostrarDetalleEnPanel(citaId) {
     panel.innerHTML = `
         <div class="card cardpanelInspeccionCita">
             <div class="card-header" style="background: #ffffff; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; padding: 5px 20px;">
-                <h3 class="card-title" style="margin:0; font-size: 16px; color: #1e293bab;">📋 Expediente Digital: ${paciente?.nombre || 'Paciente'}</h3>
-                <button class="btn btn-secondary btn-sm" onclick="appState.selectedCitaId = null; renderAgenda()" style="border-radius: 50%; width: 30px; height: 30px; padding:0;">✕</button>
+                <h3 class="card-title" style="margin:0; font-size: 12px; color: #1e293bab;">📋 Expediente Digital: ${paciente?.nombre || 'Paciente'}</h3>
+                <div style="width: 100%; display:flex; align-items:center; justify-content: space-between; gap:6px;">
+                    <button class="btn btn-sm" title="Abrir ficha completa del paciente"
+                        onclick="abrirFichaPaciente('${cita.pacienteId}')"
+                        style="border-radius:11px; padding:5px 12px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:11px; font-weight:700; display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">
+                        🗂️ Ver ficha
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="document.body.style.overflow=''; appState.selectedCitaId = null; renderAgenda()" style="border-radius: 50%; width: 30px; height: 30px; padding:0;">✕</button>
+                </div>
             </div>
             
             <div  class="card-panelCitasExpediente">
@@ -2966,7 +3044,7 @@ async function mostrarDetalleEnPanel(citaId) {
                     </div>
                 </div>
 
-                <div style=" height: 490px; flex: 1; padding: 10px 20px 20px 20px; overflow-y: auto; background: white;">
+                <div class="card-lineaTiempoHistorico" style=" height: 490px; flex: 1; padding: 10px 20px 20px 20px; overflow-y: auto; background: white;">
                     <h4 style="background: #caf4ec; font-size: 12px; color: #505254; text-transform: uppercase; letter-spacing: 0.01em; margin-bottom: 15px; display: flex; align-items: center; gap: 5px; justify-content: space-between;">
                         🕒 Línea de Tiempo / Histórico 
                         <span style="background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 12px; font-size: 11px;">${notas.length} visitas</span>
@@ -3010,6 +3088,14 @@ async function mostrarDetalleEnPanel(citaId) {
             </div>
         </div>
     `;
+
+    // ── Overlay en smartphone únicamente ─────────────────────────
+    // En PC/tablet no se toca nada (queda el layout de dos columnas
+    // de siempre). Solo por debajo de 768px el expediente se muestra
+    // sobrepuesto en pantalla completa al seleccionar una cita.
+    const _esMobilePIC = window.innerWidth <= 768;
+    panel.classList.toggle('pic-mobile-overlay', _esMobilePIC);
+    document.body.style.overflow = _esMobilePIC ? 'hidden' : '';
 }
 
 
@@ -5089,6 +5175,46 @@ function _codigoFactura(cita) {
     return `FAC-${fecha}-${sufijo}`;
 }
 
+// ── Logo del médico en el encabezado de las facturas ────────────────
+// Función global y reutilizable: cualquier factura (la de la cita, la
+// de servicios/artículos del expediente, o futuras) puede usarla para
+// mostrar el logo que el admin le asignó al médico ("logo de
+// especialidad", campo logoEspecialidadUrl). Si el médico no tiene
+// logo, cae de vuelta al logo de texto "KuraDoc" de siempre. Un solo
+// punto de verdad — así no se duplica esta lógica en cada archivo.
+window._facLogoHeaderHTML = function (medico) {
+    const url = medico?.logoEspecialidadUrl;
+    return url
+        ? `<img src="${url}" alt="Logo" class="fac-logo-img">`
+        : `<div class="fac-logo">Kura<span>Doc</span></div>`;
+};
+
+// ── Firma digital del médico en el pie de las facturas ───────────────
+// Misma idea que el logo: función global y reutilizable. La firma que
+// se muestra siempre es la del médico DUEÑO de la factura (el que
+// atendió al paciente), nunca la de quien la está generando en pantalla.
+// Por eso basta con pasarle siempre "medico" (resuelto vía f.medicoId /
+// cita.medicoId) y no appState.currentUserData: si el médico factura
+// su propia consulta, ambos coinciden y sale automático; si es una
+// secretaria (que puede trabajar para varios médicos) quien la genera,
+// igual sale la firma correcta del médico que corresponda a esa
+// factura en particular — sin que la secretaria tenga que elegir nada.
+window._facFirmaMedicoHTML = function (medico, emisor) {
+    const firmaImg = medico?.firmaDigitalUrl
+        ? `<img src="${medico.firmaDigitalUrl}" alt="Firma" class="fac-firma-img">`
+        : '';
+    const nombreMedico = medico?.nombre ? `Dr(a). ${medico.nombre}` : 'Firma del médico';
+    const idMedico  = medico?.uid || medico?.id || '';
+    const idEmisor  = emisor?.uid || emisor?.id || '';
+    // Solo se aclara "Facturado por" cuando quien emite es distinto al
+    // médico (caso secretaria); si el médico se factura a sí mismo, ya
+    // está claro con su propia firma y no hace falta la aclaración.
+    const facturadoPor = (idEmisor && idMedico && idEmisor !== idMedico)
+        ? `<div class="fac-firma-sub">Facturado por: ${emisor?.nombre || '—'}</div>`
+        : '';
+    return `<div class="fac-firma-medico">${firmaImg}<div class="fac-firma-nombre">${nombreMedico}</div>${facturadoPor}</div>`;
+};
+
 window.generarFacturaCita = function(citaId) {
     const cita = appState.citas.find(c => c.id === citaId);
     if (!cita) return;
@@ -5137,6 +5263,7 @@ window.generarFacturaCita = function(citaId) {
     .fac-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #0f172a; padding-bottom:8px; margin-bottom:10px; }
     .fac-logo { font-size:17px; font-weight:900; color:#0f172a; letter-spacing:-.5px; }
     .fac-logo span { color:#2563eb; }
+    .fac-logo-img { max-height:36px; max-width:150px; object-fit:contain; display:block; }
     .fac-centro { font-size:9px; color:#64748b; margin-top:2px; line-height:1.4; max-width:150px; }
     .fac-doc { text-align:right; }
     .fac-doc .tag { display:inline-block; background:#0f172a; color:#fff; font-size:10px; font-weight:800; letter-spacing:.5px; padding:3px 9px; border-radius:4px; margin-bottom:4px; }
@@ -5168,7 +5295,10 @@ window.generarFacturaCita = function(citaId) {
     .fac-pago { display:flex; justify-content:space-between; font-size:10px; color:#475569; margin-bottom:14px; padding:0 2px; }
 
     .fac-firma { margin-top:26px; display:flex; justify-content:space-between; gap:14px; }
-    .fac-firma div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:4px; font-size:9px; color:#64748b; }
+    .fac-firma > div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:4px; font-size:9px; color:#64748b; }
+    .fac-firma-img { display:block; max-height:34px; max-width:150px; object-fit:contain; margin:0 auto 3px; }
+    .fac-firma-nombre { font-weight:700; color:#1e293b; font-size:9.5px; }
+    .fac-firma-sub { margin-top:2px; font-size:8px; color:#94a3b8; }
 
     .fac-footer { position:absolute; bottom:8mm; left:8mm; right:8mm; text-align:center; font-size:8px; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:6px; line-height:1.5; }
 
@@ -5192,7 +5322,7 @@ window.generarFacturaCita = function(citaId) {
 
     <div class="fac-header">
         <div>
-            <div class="fac-logo">Kura<span>Doc</span></div>
+            ${window._facLogoHeaderHTML(medico)}
             <div class="fac-centro">${nombreCentro}${dirCentro ? '<br>'+dirCentro : ''}${telCentro ? '<br>Tel: '+telCentro : ''}</div>
         </div>
         <div class="fac-doc">
@@ -5245,7 +5375,7 @@ window.generarFacturaCita = function(citaId) {
 
     <div class="fac-firma">
         <div>Firma del paciente</div>
-        <div>Firma autorizada</div>
+        ${window._facFirmaMedicoHTML(medico, emisor)}
     </div>
 
     <div class="fac-footer">
@@ -18329,6 +18459,20 @@ window.abrirEditarPerfil = function(pacienteIdExterno = null) {
                             onchange="_previewFoto(this,'pep-prev-logo','','logo')">
                     </div>
                 </div>
+                <div>
+                    <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:5px;">✍️ Firma digital</div>
+                    <div class="foto-upload-wrap" onclick="document.getElementById('pep-firma-digital').click()">
+                        <div class="logo-preview" id="pep-prev-firma">
+                            ${ud.firmaDigitalUrl ? '<img src="'+ud.firmaDigitalUrl+'" alt="firma">' : '✍️'}
+                        </div>
+                        <div class="foto-upload-info">
+                            <div class="foto-upload-label">${ud.firmaDigitalUrl ? 'Firma actual — clic para cambiar' : 'Subir firma digital'}</div>
+                            <div class="foto-upload-sub">PNG con fondo transparente recomendado · Máx 1MB</div>
+                        </div>
+                        <input type="file" id="pep-firma-digital" accept="image/*"
+                            onchange="_previewFoto(this,'pep-prev-firma','','firma')">
+                    </div>
+                </div>
             </div>
         </div>
         ` : ''}
@@ -18437,8 +18581,9 @@ window._guardarPerfil = async function(uidExterno, esExterno) {
             if (esp) datos.especialidad = esp;
             if (exq) datos.exequatur    = exq;
 
-            const pepFoto = document.getElementById('pep-foto-perfil')?.files?.[0];
-            const pepLogo = document.getElementById('pep-logo-esp')?.files?.[0];
+            const pepFoto  = document.getElementById('pep-foto-perfil')?.files?.[0];
+            const pepLogo  = document.getElementById('pep-logo-esp')?.files?.[0];
+            const pepFirma = document.getElementById('pep-firma-digital')?.files?.[0];
             if (pepFoto) {
                 const url = await _subirFotoStorage(pepFoto, 'medicos/' + uid + '/foto_perfil', null);
                 if (url) datos.fotoUrl = url;
@@ -18446,6 +18591,10 @@ window._guardarPerfil = async function(uidExterno, esExterno) {
             if (pepLogo) {
                 const url = await _subirFotoStorage(pepLogo, 'medicos/' + uid + '/logo_especialidad', null);
                 if (url) datos.logoEspecialidadUrl = url;
+            }
+            if (pepFirma) {
+                const url = await _subirFotoStorage(pepFirma, 'medicos/' + uid + '/firma_digital', null);
+                if (url) datos.firmaDigitalUrl = url;
             }
         }
 
@@ -19886,7 +20035,7 @@ window._previewFoto = function(input, previewId, labelId, tipo) {
     if (!file) return;
 
     // Validar tamaño
-    const maxMB = tipo === 'logo' ? 1 : 2;
+    const maxMB = (tipo === 'logo' || tipo === 'firma') ? 1 : 2;
     if (file.size > maxMB * 1024 * 1024) {
         alert('La imagen supera el límite de ' + maxMB + ' MB. Elige una imagen más pequeña.');
         input.value = '';
