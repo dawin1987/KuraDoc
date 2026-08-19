@@ -155,6 +155,7 @@ body{
 
 /* ── Tarjeta del ticket ── */
 .ticket{
+  text-align: center;
   background:#fff;
   width:80mm;
   max-width:80mm;
@@ -193,7 +194,7 @@ body{
 /* ── Tipografía ── */
 .t-center{text-align:center;}
 .t-left  {text-align:left;}
-.bold    {font-weight:700;}
+.bold    {font-weight:900;font-size: 13px;}
 .small   {font-size:9px;}
 .tiny    {font-size:8px;color:#64748b;}
 
@@ -202,9 +203,8 @@ body{
   display:flex;
   flex-direction:column;
   align-items:center;
-  padding-bottom:4mm;
-  border-bottom:2px dashed #0f172a;
-  margin-bottom:3mm;
+  padding-bottom:1mm;
+  margin-bottom:1mm;
 }
 .hdr-title{
   font-size:16px;
@@ -213,21 +213,22 @@ body{
   text-transform:uppercase;
   color:#0f172a;
 }
-.hdr-sub{font-size:9px;color:#475569;margin-top:1px;}
+.hdr-sub{font-size:11px;color:#333333;margin-top:1px;}
+.hdr-logo-img{max-height:15mm;max-width:58mm;object-fit:contain;margin-bottom:1mm;}
 
 /* ── Turno ── */
 .turno-box{
   text-align:center;
-  padding:3mm 0;
+  padding:1mm 0;
   border-top:2px dashed #0f172a;
   border-bottom:2px dashed #0f172a;
-  margin:2mm 0 3mm;
+  margin:1mm 0 1mm;
 }
 .turno-label{font-size:9px;font-weight:700;letter-spacing:2px;color:#475569;text-transform:uppercase;}
-.turno-num  {font-size:34px;font-weight:900;line-height:1;color:#0f172a;}
+.turno-num  {font-size:19px;font-weight:900;line-height:1;color:#0f172a;}
 
 /* ── Sección ── */
-.sec{margin-bottom:3mm;}
+.sec{margin-bottom:1mm;}
 .sec-label{
   font-size:8px;font-weight:800;letter-spacing:1.5px;
   text-transform:uppercase;color:#94a3b8;margin-bottom:1mm;
@@ -236,24 +237,24 @@ body{
 .sec-val-sm{font-size:10px;color:#334155;word-break:break-word;}
 
 /* ── Separador ── */
-.sep{border:none;border-top:1px dashed #cbd5e1;margin:2.5mm 0;}
+.sep{border:none;border-top:1px dashed #cbd5e1;margin:0.9mm 0;}
 
 /* ── Fila de datos ── */
-.row{display:flex;gap:2mm;margin-bottom:1.5mm;align-items:baseline;}
-.row-icon{font-size:10px;flex-shrink:0;width:14px;}
-.row-text{font-size:10px;color:#1e293b;flex:1;word-break:break-word;}
+.row{display:flex;gap:2mm;margin-bottom:0.2mm;align-items:baseline;}
+.row-icon{font-size:1px;flex-shrink:0;width:1px;}
+.row-text{color:#1e293b;flex:1;word-break:break-word;}
 
 /* ── QR ── */
 .qr-zone{
   display:flex;
   flex-direction:column;
   align-items:center;
-  margin:3mm 0 2mm;
-  padding:3mm 0;
+  margin:1mm 0 1mm;
+  padding:1mm 0;
   border-top:1px dashed #cbd5e1;
   border-bottom:1px dashed #cbd5e1;
 }
-#qr-80mm{width:52mm;height:52mm;}
+#qr-80mm{width:30mm;height:30mm;}
 .qr-label{font-size:8px;color:#64748b;margin-top:2mm;text-align:center;}
 
 /* ── Credenciales ── */
@@ -261,8 +262,8 @@ body{
   background:#fef9c3;
   border:1px dashed #f59e0b;
   border-radius:3px;
-  padding:3mm;
-  margin:3mm 0;
+  padding:1mm;
+  margin:1mm 0;
 }
 .cred-warn{font-size:8px;font-weight:800;color:#b45309;text-transform:uppercase;
            letter-spacing:.5px;margin-bottom:2mm;text-align:center;}
@@ -276,17 +277,17 @@ body{
 .instr-box{
   background:#f0fdf4;
   border-left:3px solid #22c55e;
-  padding:2.5mm 3mm;
-  margin:2mm 0;
+  padding:1.5mm 1mm;
+  margin:1mm 0;
   font-size:9px;color:#166534;line-height:1.5;
 }
 
 /* ── Pie ── */
 .footer{
   text-align:center;
-  padding-top:3mm;
+  padding-top:1mm;
   border-top:2px dashed #0f172a;
-  margin-top:3mm;
+  margin-top:2mm;
 }
 .footer-agradecimiento{
   font-size:10px;font-weight:700;color:#0f172a;margin-bottom:1.5mm;
@@ -300,8 +301,10 @@ body{
 
   <!-- ── ENCABEZADO ── -->
   <div class="hdr-logo">
-    <div class="hdr-title">KuraDoc</div>
-    <div class="hdr-sub">Sistema de Citas Médicas</div>
+    ${med.logo
+        ? `<img src="${med.logo}" alt="Logo" class="hdr-logo-img">`
+        : `<div class="hdr-title">KuraDoc</div>`}
+    <div class="hdr-sub"> <strong>Sistema de Citas Médicas</strong></div>
     ${med.centro !== '—' ? `<div style="font-size:9px;color:#334155;margin-top:1mm;text-align:center;">${med.centro}</div>` : ''}
   </div>
 
@@ -315,22 +318,22 @@ body{
   <div class="sec">
     <div class="sec-label">Paciente</div>
     <div class="sec-val">${(pac.nombre || '—').toUpperCase()}</div>
-    ${pac.telefono !== '—' ? `<div class="sec-val-sm">📞 ${pac.telefono}</div>` : ''}
+    ${pac.telefono !== '—' ? `<div class="sec-val-sm">${pac.telefono}</div>` : ''}
     ${pac.email    !== '—' ? `<div class="sec-val-sm" style="font-size:9px;color:#475569;">✉ ${pac.email}</div>` : ''}
   </div>
   <hr class="sep">
 
   <!-- ── MÉDICO / CENTRO ── -->
-  <div class="row"><span class="row-icon">👨‍⚕️</span><span class="row-text bold">${med.nombre}</span></div>
-  <div class="row"><span class="row-icon">🩺</span><span class="row-text">${med.especialidad}</span></div>
-  <div class="row"><span class="row-icon">🏥</span><span class="row-text">${med.centro}</span></div>
+  <div class="row"><span class="row-icon"></span><span class="row-text bold">${med.nombre}</span></div>
+  <div class="row"><span class="row-icon"></span><span class="row-text">${med.especialidad}</span></div>
+  <div class="row"><span class="row-icon"></span><span class="row-text">${med.centro}</span></div>
   ${med.direccion && med.direccion !== '—' ? `<div class="row"><span class="row-icon">📍</span><span class="row-text">${med.direccion}</span></div>` : ''}
   <hr class="sep">
 
   <!-- ── FECHA / TANDA ── -->
-  <div class="row"><span class="row-icon">📅</span><span class="row-text bold">${fecha}</span></div>
-  <div class="row"><span class="row-icon">${tanda.emoji}</span><span class="row-text">${tanda.texto}</span></div>
-  ${seguro ? `<div class="row"><span class="row-icon">🛡️</span><span class="row-text">Seguro: ${seguro}</span></div>` : ''}
+  <div class="row"><span class="row-icon"></span><span class="row-text bold">${fecha}</span></div>
+  <div class="row"><span class="row-icon"></span><span class="row-text">${tanda.texto}</span></div>
+  ${seguro ? `<div class="row"><span class="row-icon"></span><span class="row-text">Seguro: ${seguro}</span></div>` : ''}
   <hr class="sep">
 
   <!-- ── CÓDIGO / TOKEN ── -->
@@ -347,9 +350,9 @@ body{
 
   <!-- ── INSTRUCCIONES ── -->
   <div class="instr-box">
-    ✅ Llegue al menos <strong>15 min</strong> antes de su turno.<br>
-    ✅ Presente este ticket en recepción.<br>
-    ✅ Para cancelar: contáctenos 24h antes.<br>
+    Llegue al menos <strong>15 min</strong> antes de su turno.<br>
+    Presente este ticket en recepción.<br>
+    Para cancelar: contáctenos 24h antes.<br>
     ${med.telefono !== '—' ? `📞 <strong>${med.telefono}</strong>` : ''}
   </div>
 
@@ -390,7 +393,7 @@ body{
   if (!url || !el || typeof QRCode === 'undefined') return;
   try {
     new QRCode(el, {
-      text: url, width: 197, height: 197,
+      text: url, width: 110, height: 110,
       colorDark: '#0f172a', colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M
     });
@@ -630,7 +633,7 @@ body{
                  border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
     🖨️ Imprimir / Guardar PDF
   </button>
-  <button onclick="document.getElementById('kdPrintOverlay') ? document.getElementById('kdPrintOverlay').remove() : window.close()"
+  <button onclick="window.close()"
           style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;
                  padding:4px 20px;border-radius:8px;font-size:14px;cursor:pointer;">
     ✕ Cerrar
@@ -860,51 +863,24 @@ body{
 // ══════════════════════════════════════════════════════════════════
 
 /**
- * Inserta el HTML del ticket en un overlay dentro de la MISMA página y
- * ejecuta window.print() sobre el documento actual (en vez de abrir una
- * ventana nueva con window.open).
- *
- * Motivo del cambio: en la PWA instalada (modo standalone, Android) no hay
- * "chrome" de navegador donde mostrar una ventana emergente nueva — Chrome
- * la abre y la cierra sola de inmediato, devolviendo al usuario a la app.
- * Usando un overlay + @media print con visibilidad restringida al ticket,
- * el comportamiento es idéntico en navegador normal y en la app instalada.
- *
- * @param {string} html  - HTML completo de la plantilla (incluye su propio <style>)
- * @param {string} ancho - '360px' para 80mm, '800px' para carta (solo referencia visual)
+ * Abre ventana y ejecuta window.print() con el HTML dado.
+ * @param {string} html  - HTML completo de la plantilla
+ * @param {string} ancho - '360px' para 80mm, '800px' para carta
  */
 window.ejecutarImpresion = function(html, ancho) {
-    const anterior = document.getElementById('kdPrintOverlay');
-    if (anterior) anterior.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'kdPrintOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:6000;overflow:auto;background:#e5e7eb;-webkit-overflow-scrolling:touch;';
-    overlay.innerHTML = html;
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
-    document.body.appendChild(overlay);
-
-    // CSS de impresión: oculta todo lo demás de la app y muestra solo el overlay
-    if (!document.getElementById('kd-print-overlay-styles')) {
-        const st = document.createElement('style');
-        st.id = 'kd-print-overlay-styles';
-        st.textContent = `
-@media print {
-  body > *:not(#kdPrintOverlay) { display:none !important; }
-  #kdPrintOverlay { position:static !important; overflow:visible !important; background:none !important; }
-}`;
-        document.head.appendChild(st);
+    ancho = ancho || '800px';
+    const win = window.open('', '_blank', `width=${parseInt(ancho)},height=700,scrollbars=yes`);
+    if (!win) {
+        alert('Por favor permite ventanas emergentes para imprimir.');
+        return;
     }
-
-    // La plantilla ya trae su propio botón "🖨️ Imprimir / Guardar PDF"
-    // (onclick="window.print()"), que es un clic real del usuario y por
-    // eso nunca lo bloquea el navegador. NO disparamos window.print()
-    // automáticamente aquí: Chrome bloquea toda impresión que no venga
-    // de un clic directo, mostrando "Se impidió que este sitio imprima
-    // automáticamente" — que es justo lo que pasaba con el setTimeout
-    // que existía antes en este lugar.
+    win.document.write(html);
+    win.document.close();
+    // El script de QR ya hace window.print() dentro del HTML,
+    // aquí como respaldo extra si QR no carga:
+    win.addEventListener('load', () => {
+        setTimeout(() => { try { win.focus(); win.print(); } catch(e){} }, 600);
+    });
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -1037,7 +1013,11 @@ window.abrirModalTicketCita = async function(citaOrId) {
           <div style="flex:1;min-width:0;">
             <div style="background:#f8fafc;border-radius:12px;padding:12px 14px;
                         border:1px solid #e2e8f0;font-family:monospace;font-size:11px;">
-              <div style="text-align:center;font-weight:900;font-size:14px;color:#0f172a;margin-bottom:1px;">KuraDoc</div>
+              <div style="text-align:center;margin-bottom:1px;">
+                ${med.logo
+                    ? `<img src="${med.logo}" alt="Logo" style="max-height:26px;max-width:150px;object-fit:contain;">`
+                    : `<div style="font-weight:900;font-size:14px;color:#0f172a;">KuraDoc</div>`}
+              </div>
               <div style="text-align:center;font-size:9px;color:#64748b;margin-bottom:6px;">Sistema de Citas Médicas</div>
               <div style="border-top:2px dashed #cbd5e1;margin:5px 0;"></div>
               <div style="text-align:center;font-size:9px;color:#64748b;">TURNO</div>
@@ -1074,10 +1054,10 @@ window.abrirModalTicketCita = async function(citaOrId) {
             <div style="margin-top:6px;background:#eff6ff;border-radius:8px;
                         padding:5px 7px;text-align:center;width:100%;">
               <div style="font-size:8px;color:#1e40af;font-weight:700;">
-                ${esAndroid ? '📱 Android' : '🖥️ PC'} detectado
+                ${esAndroid ? '📱 Android' : '🖥️ PC / Tablet'}
               </div>
               <div style="font-size:7.5px;color:#64748b;margin-top:1px;">
-                ${esAndroid ? 'RawBT App' : 'QZ Tray / Carta'}
+                ${esAndroid ? 'RawBT App' : 'Ticket 80mm · Carta'}
               </div>
             </div>
           </div>
@@ -1150,12 +1130,27 @@ window.abrirModalTicketCita = async function(citaOrId) {
         }
     }
 
-    // Handler: impresión automática (térmica si hay, carta si no)
+    // Handler: botón principal "🖨️ Imprimir ticket".
+    // Android sigue usando RawBT (impresión directa por intent — no
+    // depende de QZ Tray, así que se deja igual). En PC/tablet ya NO
+    // se intenta detectar ni conectar con QZ Tray: se genera la
+    // plantilla térmica de 80mm directamente y se abre la ventana de
+    // impresión normal del sistema operativo, donde el usuario elige
+    // su impresora (térmica u otra) desde el propio diálogo.
     window._ejecutarImpresion = async function() {
         const statusEl = document.getElementById('ticketPrintStatus');
         const c = window._ticketState.citaActual;
         if (!c) return;
-        await window.imprimirTicketAutomatico(c, statusEl);
+
+        if (window._esAndroid && window._esAndroid()) {
+            if (typeof window._imprimirAndroid === 'function') {
+                window._imprimirAndroid(c, statusEl);
+                return;
+            }
+        }
+
+        if (statusEl) { statusEl.textContent = 'Abriendo ticket 80mm…'; statusEl.style.color = '#0369a1'; }
+        window.imprimirTicket80mm(c);
     };
 
     // Handler: forzar carta/PDF (botón nuevo)
