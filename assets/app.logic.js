@@ -2915,15 +2915,15 @@ async function mostrarDetalleEnPanel(citaId) {
     // 3. Renderizar Layout de Dos Columnas
     panel.innerHTML = `
         <div class="card cardpanelInspeccionCita">
-            <div class="card-header" style="background: #ffffff; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; padding: 5px 20px;">
-                <h3 class="card-title" style="margin:0; font-size: 11.5px; color: #1e293bab;">📋 Expediente Digital: ${paciente?.nombre || 'Paciente'}</h3>
+            <div class="card-header" style="background: #ffffff; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; padding: 5px 9px;justify-content: space-around;">
+                <h3 class="card-title" style="font-weight: 700; margin-top: 4px;margin-bottom: 10px; font-size: 12.5px; color: #1e293bbf;">📋 Expediente Digital: ${paciente?.nombre || 'Paciente'}</h3>
                 <div style="width: 100%; display:flex; align-items:center; justify-content: space-between; gap:6px;">
                     <button class="btn btn-sm" title="Abrir ficha completa del paciente"
                         onclick="abrirFichaPaciente('${cita.pacienteId}')"
-                        style="border-radius:11px; padding:5px 12px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:11px; font-weight:700; display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">
+                        style="border-radius:5px; padding:3px 5px; background:#ffe4e445; color:#8d8d8d; border:1px solid #bfdbfe; font-size:11px; font-weight:700; display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">
                         🗂️ Ver ficha
                     </button>
-                    <button class="btn btn-secondary btn-sm" onclick="document.body.style.overflow=''; appState.selectedCitaId = null; renderAgenda()" style="border-radius: 50%; width: 30px; height: 30px; padding:0;">✕</button>
+                    <button class="btn btn-secondary btn-sm" onclick="document.body.style.overflow=''; appState.selectedCitaId = null; renderAgenda()" style="background: #ffe3e363; border-radius: 25%; width: 27px; height: 25px; padding:0;">✕</button>
                 </div>
             </div>
             
