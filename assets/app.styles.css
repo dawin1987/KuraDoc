@@ -1328,7 +1328,7 @@ Specificity: (0,2,0)
     .card-body-paciente {
              grid-template-columns: repeat(1, 1fr); 
               gap: 10px;
-            }
+                       }
 
     .card-citassecretaria{
      background: #ffffff;
@@ -1354,7 +1354,7 @@ Specificity: (0,2,0)
                        }
 
          .card-ExpedienteDigital { 
-              height: 410px; 
+              height: auto; 
                flex: 0 0 400px; 
                border-right: 1px solid #f1f5f9; 
                padding: 2px 4px 4px 4px; 
