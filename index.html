@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>KuraDoc SGI</title>
+    <title>Sistema de Gestión Integrar</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
@@ -31,7 +31,7 @@ if ("serviceWorker" in navigator) {
     <!-- ═══ SPLASH — pantalla de carga inicial ════════════════ -->
     <div id="app-splash">
         <div class="splash-logo">🏥</div>
-        <div class="splash-title">KuraDoc</div>
+        <div class="splash-title">AppMedicaRD</div>
         <div class="splash-subtitle">Sistema de Gestión Clínica</div>
         <div class="splash-bar-wrap">
             <div class="splash-bar"></div>
@@ -664,7 +664,7 @@ if ("serviceWorker" in navigator) {
 
                             <div class="form-group">
                                 <label class="form-label">Nombre Completo <span style="color:#dc2626">*</span></label>
-                                <input type="text" id="secRegNombre" class="form-input" required placeholder="Ej: Juan Pérez" style="border-radius:8px;">
+                                <input type="text" id="secRegNombre" class="form-input" required placeholder="Ej: Juan Pérez" style="border-radius:8px;" oninput="window._sugerirEmailPaciente && window._sugerirEmailPaciente()">
                             </div>
 
                             <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
@@ -724,7 +724,7 @@ if ("serviceWorker" in navigator) {
                                 <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; margin-bottom:12px;">Configuración de Usuario</div>
                                 <div class="form-group">
                                     <label class="form-label">Email (Usuario) <span style="color:#dc2626">*</span></label>
-                                    <input type="email" id="secRegEmail" class="form-input" required style="border-radius:8px; background:white;" placeholder="correo@ejemplo.com">
+                                    <input type="email" id="secRegEmail" class="form-input" required style="border-radius:8px; background:white;" placeholder="correo@ejemplo.com" oninput="this.dataset.editadoManual='1'">
                                 </div>
 
                                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
