@@ -1050,13 +1050,11 @@ Specificity: (0,2,0)
 .login-card {
  height: -webkit-fill-available;
     flex: 1;
-    max-width: 350px;
+    max-width: 430px;
     padding: 40px;
-
     display: flex;
     flex-direction: column;
     justify-content: center;
-
     background: #ffffff;
     box-shadow: -10px 0 30px rgba(0,0,0,0.08);
 }
