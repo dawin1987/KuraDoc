@@ -2916,7 +2916,7 @@ async function mostrarDetalleEnPanel(citaId) {
     panel.innerHTML = `
         <div class="card cardpanelInspeccionCita">
             <div class="card-header" style="background: #ffffff; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; padding: 5px 20px;">
-                <h3 class="card-title" style="margin:0; font-size: 12px; color: #1e293bab;">📋 Expediente Digital: ${paciente?.nombre || 'Paciente'}</h3>
+                <h3 class="card-title" style="margin:0; font-size: 11.5px; color: #1e293bab;">📋 Expediente Digital: ${paciente?.nombre || 'Paciente'}</h3>
                 <div style="width: 100%; display:flex; align-items:center; justify-content: space-between; gap:6px;">
                     <button class="btn btn-sm" title="Abrir ficha completa del paciente"
                         onclick="abrirFichaPaciente('${cita.pacienteId}')"
