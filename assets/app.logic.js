@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
    AppMedicaRD — Lógica principal
-   © 2026 KuraDoc. Todos los derechos reservados.
+   © 2026 KuraDoc Vs 0.1. Todos los derechos reservados.
 ═══════════════════════════════════════════════════════ */
 
         // 🔥 CONFIGURACIÓN DE FIREBASE - REEMPLAZA CON TUS VALORES
@@ -2600,8 +2600,6 @@ async function renderAgenda() {
     @media (max-width: 768px) {
         .card-citas-expediente { position: relative; }
         #panelInspeccionCita.pic-mobile-overlay {
-           
-             margin: 50px 10px 10px 10px;
             position: fixed; inset: 0; z-index: 3000;
             background: #fff; overflow-y: auto;
             -webkit-overflow-scrolling: touch;
@@ -2915,15 +2913,15 @@ async function mostrarDetalleEnPanel(citaId) {
     // 3. Renderizar Layout de Dos Columnas
     panel.innerHTML = `
         <div class="card cardpanelInspeccionCita">
-            <div class="card-header" style="background: #ffffff; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; padding: 5px 9px;justify-content: space-around;">
-                <h3 class="card-title" style="font-weight: 700; margin-top: 4px;margin-bottom: 10px; font-size: 12.5px; color: #1e293bbf;">📋 Expediente Digital: ${paciente?.nombre || 'Paciente'}</h3>
-                <div style="width: 100%; display:flex; align-items:center; justify-content: space-between; gap:6px;">
+            <div class="card-header" style="background: #ffffff; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; padding: 5px 20px;">
+                <h3 class="card-title" style="margin:0; font-size: 16px; color: #1e293bab;">📋 Expediente Digital: ${paciente?.nombre || 'Paciente'}</h3>
+                <div style="display:flex; align-items:center; gap:6px;">
                     <button class="btn btn-sm" title="Abrir ficha completa del paciente"
                         onclick="abrirFichaPaciente('${cita.pacienteId}')"
-                        style="border-radius:5px; padding:3px 5px; background:#ffe4e445; color:#8d8d8d; border:1px solid #bfdbfe; font-size:11px; font-weight:700; display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">
+                        style="border-radius:16px; padding:5px 12px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:11px; font-weight:700; display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">
                         🗂️ Ver ficha
                     </button>
-                    <button class="btn btn-secondary btn-sm" onclick="document.body.style.overflow=''; appState.selectedCitaId = null; renderAgenda()" style="background: #ffe3e363; border-radius: 25%; width: 27px; height: 25px; padding:0;">✕</button>
+                    <button class="btn btn-secondary btn-sm" onclick="document.body.style.overflow=''; appState.selectedCitaId = null; renderAgenda()" style="border-radius: 50%; width: 30px; height: 30px; padding:0;">✕</button>
                 </div>
             </div>
             
@@ -4301,13 +4299,21 @@ window._conectarQZ = async function() {
         const cargado = await _cargarQZTray();
         if (!cargado) return false;
 
-        if (!qz.websocket.isActive()) {
-            await qz.websocket.connect({ retries: 1, delay: 0.5 });
-        }
-        // Sin certificado firmado en modo dev — firma vacía
+        // Registrar el certificado/firma ANTES de conectar (así QZ Tray
+        // ya sabe que es una conexión anónima desde el primer intento,
+        // en vez de intentar buscar un certificado real y fallar).
         qz.security.setCertificatePromise(() => Promise.resolve(''));
         qz.security.setSignatureAlgorithm('SHA512');
         qz.security.setSignaturePromise(() => Promise.resolve(''));
+
+        if (!qz.websocket.isActive()) {
+            // Más reintentos y más tiempo entre cada uno: la primera vez
+            // que se conecta, QZ Tray muestra el pop-up "Action Required"
+            // y espera a que el usuario haga clic en "Allow". Con muy
+            // poco tiempo de espera, la conexión se daba por fallida
+            // antes de que la persona alcanzara a hacer clic.
+            await qz.websocket.connect({ retries: 5, delay: 2 });
+        }
 
         window._ticketState.qzConectado = true;
         return true;
@@ -8077,6 +8083,11 @@ function abrirModalNuevoPaciente() {
         overlay.style.zIndex = nciAbierto ? '5500' : '';
     }
 
+    // Reiniciar la sugerencia de email para esta nueva sesión de registro
+    // (si había un borrador o dato importado, se vuelve a marcar abajo).
+    const emailInput = document.getElementById('secRegEmail');
+    if (emailInput) delete emailInput.dataset.editadoManual;
+
     // Hidratar con borrador si existe, de lo contrario valores por defecto
     _draftHidratar();
    _pexPrecargar();
@@ -8093,6 +8104,55 @@ function cerrarModalNuevoPaciente() {
 }
 
 
+
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  SUGERENCIA AUTOMÁTICA DE EMAIL/USUARIO — Nuevo Paciente         ║
+// ║  Mientras la secretaria/médico escribe el Nombre Completo, se    ║
+// ║  sugiere en vivo un correo tipo "primernombre + iniciales de     ║
+// ║  cada apellido". Ej: "Dawin Almanzar Rojas" → dawinar@gmail.com  ║
+// ║  Se detiene en cuanto la persona edita el campo de Email a mano, ║
+// ║  o si ya venía prellenado (borrador guardado / importado desde   ║
+// ║  Hospital Cevicos) — nunca pisa un correo real ya existente.     ║
+// ╚══════════════════════════════════════════════════════════════════╝
+
+/** "Dawin Almanzar Rojas" → "dawinar"  /  "Randy Almanzar Moaquea Guzman" → "randyamg" */
+window._generarUsuarioEmailDesdeNombre = function(nombreCompleto) {
+    if (!nombreCompleto) return '';
+    const limpio = nombreCompleto
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quita acentos (á→a, ñ→n, etc.)
+        .toLowerCase()
+        .replace(/[^a-z\s]/g, ' ')                          // solo letras y espacios
+        .trim()
+        .replace(/\s+/g, ' ');
+    if (!limpio) return '';
+    const partes = limpio.split(' ');
+    const primerNombre = partes[0];
+    const inicialesApellidos = partes.slice(1).map(p => p[0]).join('');
+    return (primerNombre + inicialesApellidos).slice(0, 30);
+};
+
+/** Evita sugerir un usuario que ya existe en el sistema (le agrega un número al final) */
+window._emailLocalUnico = function(local) {
+    if (!local) return local;
+    const lista = (appState.users && appState.users.length) ? appState.users : (appState.pacientesDB || []);
+    const existentes = new Set(
+        lista.map(u => (u.email || '').toLowerCase().split('@')[0]).filter(Boolean)
+    );
+    if (!existentes.has(local)) return local;
+    let n = 2;
+    while (existentes.has(local + n)) n++;
+    return local + n;
+};
+
+/** Handler del oninput en #secRegNombre — actualiza #secRegEmail en vivo */
+window._sugerirEmailPaciente = function() {
+    const emailInput = document.getElementById('secRegEmail');
+    if (!emailInput || emailInput.dataset.editadoManual === '1') return; // respeta lo que la persona ya escribió
+    const nombreInput = document.getElementById('secRegNombre');
+    const local = window._generarUsuarioEmailDesdeNombre(nombreInput ? nombreInput.value : '');
+    if (!local) { emailInput.value = ''; return; }
+    emailInput.value = window._emailLocalUnico(local) + '@gmail.com';
+};
 
 // ── Resaltar campo con error y auto-limpiar al escribir ──────────
 window._resaltarCampoError = function(fieldId) {
@@ -8170,6 +8230,13 @@ function _draftHidratar() {
                 el.dispatchEvent(new Event('change', { bubbles: false })); // Actualizar UI (select, etc.)
             }
         });
+        // El correo del borrador ya fue escrito por la persona en su
+        // sesión anterior — se marca como "manual" para que la
+        // sugerencia automática no lo pise si sigue editando el nombre.
+        if (draft.secRegEmail) {
+            const emailEl = document.getElementById('secRegEmail');
+            if (emailEl) emailEl.dataset.editadoManual = '1';
+        }
         // Mostrar aviso de borrador recuperado
         const alerta = document.getElementById('secRegAlerta');
         if (alerta) {
@@ -8208,6 +8275,9 @@ function _draftLimpiar() {
         const p2 = document.getElementById('secRegPassword2');
         if (p1) p1.value = 'p123456';
         if (p2) p2.value = 'p123456';
+        // Formulario en blanco de nuevo: la sugerencia de email vuelve a activarse
+        const emailEl = document.getElementById('secRegEmail');
+        if (emailEl) delete emailEl.dataset.editadoManual;
         // Limpiar alerta
         const alerta = document.getElementById('secRegAlerta');
         if (alerta) alerta.style.display = 'none';
@@ -25635,6 +25705,10 @@ window._analEditHistItem = async function(analId, idx, historiaId) {
         // 6. Email
         if (p.email) {
             _set('secRegEmail', p.email);
+            // Es un correo real importado del hospital — nunca debe ser
+            // reemplazado por la sugerencia automática del nombre.
+            const emailEl = document.getElementById('secRegEmail');
+            if (emailEl) emailEl.dataset.editadoManual = '1';
         } else if (p.emailRaw) {
             avisos.push(`Email "<strong>${_esc(p.emailRaw)}</strong>" inválido — ingresa manualmente.`);
         }
