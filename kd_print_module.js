@@ -296,7 +296,7 @@ body{
 .footer-marca{font-size:8px;color:#94a3b8;margin-top:2mm;}
 .no-print-bar{
   text-align:center;margin-bottom:8px;display:flex;gap:6px;
-  justify-content:center;flex-wrap:wrap;align-items: baseline; align-content: center;  flex-direction: row;
+  justify-content:center;flex-wrap:wrap;align-items: baseline; align-content: center;  flex-direction: column;
            }
 .no-print-bar button{
   border:1px solid #e2e8f0;padding:5px 12px;border-radius:7px;font-size:11px;
