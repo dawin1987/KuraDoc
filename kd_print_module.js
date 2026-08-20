@@ -1021,6 +1021,31 @@ window.abrirModalTicketCita = async function(citaOrId) {
                          font-size:18px;display:flex;align-items:center;justify-content:center;">✕</button>
         </div>
 
+        <!-- Acciones de impresión — arriba, sutiles, una al lado de la otra -->
+        <div style="display:flex;gap:6px;padding:8px 18px 0;">
+          <button id="btnImprimirTicket"
+                  onclick="window._ejecutarImpresion()"
+                  title="Imprimir ticket (térmica / automático)"
+                  style="flex:1;padding:6px 8px;background:#f1f5f9;color:#334155;
+                         border:1px solid #e2e8f0;border-radius:8px;font-size:11px;
+                         font-weight:700;cursor:pointer;display:flex;align-items:center;
+                         justify-content:center;gap:5px;transition:background .15s;"
+                  onmouseover="this.style.background='#e2e8f0'"
+                  onmouseout="this.style.background='#f1f5f9'">
+            🖨️ Ticket
+          </button>
+          <button onclick="window._ejecutarImpresionCarta()"
+                  title="Imprimir Hoja Carta / PDF"
+                  style="flex:1;padding:6px 8px;background:#f1f5f9;color:#334155;
+                         border:1px solid #e2e8f0;border-radius:8px;font-size:11px;
+                         font-weight:700;cursor:pointer;display:flex;align-items:center;
+                         justify-content:center;gap:5px;transition:background .15s;"
+                  onmouseover="this.style.background='#e2e8f0'"
+                  onmouseout="this.style.background='#f1f5f9'">
+            📄 Carta/PDF
+          </button>
+        </div>
+
         <!-- Preview compacto -->
         <div style="display:flex;gap:0;padding:16px 18px 8px;">
           <!-- Datos -->
@@ -1084,31 +1109,6 @@ window.abrirModalTicketCita = async function(citaOrId) {
 
         <!-- Botones -->
         <div style="padding:6px 18px 18px;display:flex;flex-direction:column;gap:8px;">
-
-          <!-- Botón principal automático -->
-          <button id="btnImprimirTicket"
-                  onclick="window._ejecutarImpresion()"
-                  style="width:100%;padding:12px;
-                         background:linear-gradient(135deg,#0f172a,#1e3a5f);
-                         color:white;border:none;border-radius:12px;font-size:13px;
-                         font-weight:800;cursor:pointer;display:flex;align-items:center;
-                         justify-content:center;gap:8px;transition:all .2s;"
-                  onmouseover="this.style.transform='translateY(-1px)'"
-                  onmouseout="this.style.transform=''">
-            🖨️ Imprimir ticket
-          </button>
-
-          <!-- ★ BOTÓN NUEVO: Hoja Carta / PDF ★ -->
-          <button onclick="window._ejecutarImpresionCarta()"
-                  style="width:100%;padding:11px;
-                         background:linear-gradient(135deg,#7c3aed,#4f46e5);
-                         color:white;border:none;border-radius:12px;font-size:13px;
-                         font-weight:700;cursor:pointer;display:flex;align-items:center;
-                         justify-content:center;gap:8px;transition:all .2s;"
-                  onmouseover="this.style.transform='translateY(-1px)'"
-                  onmouseout="this.style.transform=''">
-            📄 Imprimir Hoja Carta / PDF
-          </button>
 
           <!-- Reimprimir -->
           <button onclick="window._ejecutarImpresion()"
