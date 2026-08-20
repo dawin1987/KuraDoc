@@ -633,7 +633,7 @@ body{
                  border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
     🖨️ Imprimir / Guardar PDF
   </button>
-  <button onclick="(function(){ try { if (window.top !== window.self && window.parent && window.parent.document.getElementById('kdPrintFrame')) { window.parent.document.getElementById('kdPrintFrame').remove(); } else { window.close(); } } catch(e) { window.close(); } })()"
+  <button onclick="window.close()"
           style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;
                  padding:4px 20px;border-radius:8px;font-size:14px;cursor:pointer;">
     ✕ Cerrar
@@ -863,76 +863,15 @@ body{
 // ══════════════════════════════════════════════════════════════════
 
 /**
- * ¿La app corre instalada (PWA en modo standalone / "Add to Home Screen")?
- * En este modo NO hay "chrome" de navegador para alojar una ventana nueva,
- * así que window.open() se vuelve poco confiable: se bloquea, se abre
- * fuera del contexto de la app, o simplemente no hace nada. Por eso el
- * ticket vía RawBT (Android, deep link) siempre funcionó bien — no usa
- * window.open — mientras que "Carta / PDF" (que sí lo usaba) fallaba.
- */
-window._kdEsAppInstalada = function() {
-    try {
-        if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
-        if (window.navigator && window.navigator.standalone === true) return true; // iOS "Add to Home Screen"
-    } catch(e) {}
-    return false;
-};
-
-/**
- * Imprime un documento HTML completo usando un <iframe> oculto en la
- * MISMA página actual, en vez de abrir una ventana nueva. Esto funciona
- * de forma idéntica en navegador normal y en app instalada (PWA/WebAPK/
- * Home Screen de iOS), y evita por completo el bloqueador de ventanas
- * emergentes.
- * @param {string} html - HTML completo de la plantilla (incluye <html>)
- */
-window._kdImprimirEnPagina = function(html) {
-    const anterior = document.getElementById('kdPrintFrame');
-    if (anterior) anterior.remove();
-
-    const iframe = document.createElement('iframe');
-    iframe.id = 'kdPrintFrame';
-    // Oculto pero presente en el DOM (display:none impide imprimir en
-    // algunos navegadores, por eso se usa tamaño 0 + visibility:hidden).
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(html);
-    doc.close();
-
-    iframe.onload = function() {
-        setTimeout(() => {
-            try {
-                iframe.contentWindow.focus();
-                iframe.contentWindow.print();
-            } catch(e) {
-                console.error('[KDPrint] Error al imprimir vía iframe:', e);
-            }
-        }, 300);
-    };
-};
-
-/**
  * Abre ventana y ejecuta window.print() con el HTML dado.
  * @param {string} html  - HTML completo de la plantilla
  * @param {string} ancho - '360px' para 80mm, '800px' para carta
  */
 window.ejecutarImpresion = function(html, ancho) {
     ancho = ancho || '800px';
-
-    // App instalada (PWA/standalone) → nunca usar window.open, imprimir
-    // dentro de la página actual vía iframe oculto.
-    if (window._kdEsAppInstalada()) {
-        window._kdImprimirEnPagina(html);
-        return;
-    }
-
     const win = window.open('', '_blank', `width=${parseInt(ancho)},height=700,scrollbars=yes`);
     if (!win) {
-        // Popup bloqueado también en modo navegador normal → mismo respaldo.
-        window._kdImprimirEnPagina(html);
+        alert('Por favor permite ventanas emergentes para imprimir.');
         return;
     }
     win.document.write(html);
