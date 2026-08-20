@@ -665,7 +665,7 @@ if ("serviceWorker" in navigator) {
                                 <input type="text" id="secRegNombre" class="form-input" required placeholder="Ej: Juan Pérez" style="border-radius:8px;" oninput="window._sugerirEmailPaciente && window._sugerirEmailPaciente()">
                             </div>
 
-                       <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
+                       <div style="display:grid; grid-template-columns: 1.1fr 0.8fr; gap:8px;">
                                 <div class="form-group">
                                     <label class="form-label">Fecha Nacimiento <span style="color:#dc2626">*</span></label>
                                     <input type="text" class="form-input" id="secRegFechaNac" placeholder="dd-mm-aaaa" maxlength="10" required style="border-radius:8px;" oninput="regAutoFormatFecha(this,'secRegEdad','secRegCedulaWrap')">
@@ -675,7 +675,7 @@ if ("serviceWorker" in navigator) {
                                     <input type="text" class="form-input" id="secRegEdad" readonly placeholder="Auto" style="background:#f8fafc; border-radius:8px; color:#64748b; text-align:center;">
                                 </div>
                         </div>
-                     <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
+                     <div style="display:grid; grid-template-columns: 1.1fr 0.8fr; gap:8px;">
                             <div class="form-group">
                                 <label class="form-label">Género <span style="color:#dc2626">*</span></label>
                                 <select class="form-input" id="secRegGenero" required style="border-radius:8px;">
@@ -690,7 +690,7 @@ if ("serviceWorker" in navigator) {
                                 <input type="text" class="form-input" id="secRegCedula" placeholder="000-0000000-0" maxlength="13" style="border-radius:8px;" oninput="this.value=formatearCedula(this.value)">
                             </div>
                       </div>
-                         <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
+                         <div style="display:grid; grid-template-columns: 1.1fr 0.8fr; gap:8px;">
                                <div class="form-group">
                                   <label class="form-label">Teléfono <span style="color:#dc2626">*</span></label>
                                   <input type="text" 
