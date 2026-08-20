@@ -900,6 +900,18 @@
             return window._kdHtml2PdfLoading;
         }
 
+        // ── Precarga la librería EN CUANTO se abre el recibo ────────────
+        // Muy importante para móviles instalados como App (PWA/WebAPK):
+        // navigator.share() y window.print() solo se pueden disparar
+        // dentro de una ventana muy corta desde el toque del usuario
+        // ("gesto de usuario" / transient activation). Si html2pdf.js
+        // se descarga recién al presionar "Compartir", esa descarga por
+        // red consume esa ventana y el share termina fallando en
+        // silencio en la app instalada (aunque en el navegador normal,
+        // con más margen, sí llegue a tiempo). Precargarla aquí hace que
+        // al presionar el botón el PDF se genere de inmediato.
+        _kdCargarHtml2Pdf().catch(function () { /* se reintenta al compartir */ });
+
         // Genera el PDF a partir ÚNICAMENTE del nodo .fac-sheet dentro del
         // overlay (los botones viven fuera de ese nodo, así que nunca quedan
         // incluidos en el PDF ni en lo que se comparte).
@@ -943,18 +955,45 @@
                 elemento.style.maxWidth = prevMaxWidth;
 
                 const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
-                if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-                    await navigator.share({
-                        files: [archivo],
-                        title: 'Factura ' + f.numeroFactura,
-                        text: 'Factura ' + f.numeroFactura
-                    }).catch(function () {});
-                } else {
+
+                // Función de respaldo: descarga directa del PDF. Se usa si
+                // el dispositivo no soporta compartir archivos, o si
+                // navigator.share() falla (p.ej. por haber perdido el
+                // "gesto de usuario" — típico en apps instaladas/PWA).
+                function _kdDescargarPdf() {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url; a.download = nombreArchivo;
                     document.body.appendChild(a); a.click(); document.body.removeChild(a);
                     setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+                    if (typeof window._mostrarToast === 'function') {
+                        window._mostrarToast('PDF descargado. Puedes adjuntarlo desde WhatsApp o tu correo.', 'success');
+                    }
+                }
+
+                if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+                    try {
+                        await navigator.share({
+                            files: [archivo],
+                            title: 'Factura ' + f.numeroFactura,
+                            text: 'Factura ' + f.numeroFactura
+                        });
+                    } catch (shareErr) {
+                        // AbortError = el usuario cerró el panel de compartir
+                        // a propósito: no es un error, no hacemos nada más.
+                        if (shareErr && shareErr.name === 'AbortError') {
+                            // no-op
+                        } else {
+                            // Cualquier otro fallo (p.ej. NotAllowedError por
+                            // pérdida del gesto de usuario, típico en app
+                            // instalada) — nunca lo dejamos en silencio:
+                            // caemos automáticamente a la descarga directa.
+                            console.warn('[Facturación] navigator.share falló, usando descarga directa:', shareErr);
+                            _kdDescargarPdf();
+                        }
+                    }
+                } else {
+                    _kdDescargarPdf();
                 }
             } catch (err) {
                 console.error('Error generando PDF:', err);
