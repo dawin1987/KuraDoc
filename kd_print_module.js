@@ -294,9 +294,23 @@ body{
 }
 .footer-tel{font-size:10px;color:#475569;margin-bottom:1mm;}
 .footer-marca{font-size:8px;color:#94a3b8;margin-top:2mm;}
+.no-print-bar{
+  text-align:center;margin-bottom:10px;display:flex;gap:8px;
+  justify-content:center;flex-wrap:wrap;
+}
+.no-print-bar button{
+  border:none;padding:9px 18px;border-radius:8px;font-size:12.5px;
+  font-weight:700;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;
+}
+.btn-ticket-print{background:#0f172a;color:#fff;}
+.btn-ticket-close{background:#e2e8f0;color:#1e293b;}
 </style>
 </head>
 <body>
+<div class="no-print-bar no-print">
+  <button class="btn-ticket-print" onclick="window.print()">🖨️ Imprimir</button>
+  <button class="btn-ticket-close" onclick="window.close()">✕ Cerrar</button>
+</div>
 <div class="ticket">
 
   <!-- ── ENCABEZADO ── -->
