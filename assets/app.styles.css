@@ -578,9 +578,9 @@ Specificity: (0,2,0)
 @media (max-width: 640px) {
     .modal-overlay {
         align-items: flex-start;
-        padding-top: 70px;
-        padding-left: 10px;
-        padding-right: 10px;
+        padding-top: 50px;
+        padding-left: 3px;
+        padding-right: 3px;
     }
 }
         .modal {height: auto; background: white; border-radius: 12px; max-width: 600px; width: 100%; max-height: calc(100vh - 90px); overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
@@ -3137,7 +3137,7 @@ Specificity: (0,2,0)
         gap: 30px;
     }
     @media (max-width: 650px) {
-        .fp-grid-container { grid-template-columns: 1fr; gap: 15px; }
+        .fp-grid-container { grid-template-columns: 1fr; gap: 5px; }
     }
 
 /* ── Animación modal términos ── */
