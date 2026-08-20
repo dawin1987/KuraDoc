@@ -935,6 +935,32 @@ window._kdCompartirFacturaWin = async function (btn) {
         }
 
         const elemento = document.querySelector('.fac-sheet');
+
+        // ── Esperar a que el logo y la firma (imágenes remotas) estén
+        //    listas ANTES de capturar. html2canvas solo "fotografía" lo
+        //    que ya está pintado en pantalla: si el logo/firma todavía
+        //    se están descargando (o el navegador las cachea sin CORS),
+        //    salen en blanco en el PDF aunque a simple vista sí se vean
+        //    un instante después. Forzamos además crossOrigin="anonymous"
+        //    y una recarga limpia, porque si no, html2canvas puede
+        //    "tainear" el canvas y omitir la imagen igual aunque ya haya
+        //    cargado.
+        await Promise.all(Array.from(elemento.querySelectorAll('img')).map(function (img) {
+            return new Promise(function (resolve) {
+                function listo() { resolve(); }
+                if (!img.crossOrigin) {
+                    img.crossOrigin = 'anonymous';
+                    const src = img.src;
+                    img.src = '';
+                    img.src = src;
+                }
+                if (img.complete && img.naturalWidth > 0) { listo(); return; }
+                img.addEventListener('load', listo, { once: true });
+                img.addEventListener('error', listo, { once: true });
+                setTimeout(listo, 4000); // tope de seguridad por si una imagen falla
+            });
+        }));
+
         const prevShadow   = elemento.style.boxShadow;
         const prevMargin   = elemento.style.margin;
         const prevWidth    = elemento.style.width;
