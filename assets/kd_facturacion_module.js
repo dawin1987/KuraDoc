@@ -817,7 +817,7 @@
 <div class="print-btn no-print">
     <button class="btn-print" onclick="window.print()">🖨️ Imprimir</button>
     <button class="btn-share" id="btnCompartirFac" onclick="_kdCompartirFactura(this)">📤 Compartir / Descargar PDF</button>
-    <button class="btn-close" onclick="document.getElementById('facPrintOverlay').remove()">✕ Cerrar</button>
+    <button class="btn-close" onclick="document.getElementById('facPrintOverlay').remove(); var st=document.getElementById('facPrintOverlayStyles'); if(st) st.remove();">✕ Cerrar</button>
 </div>
 <div class="fac-sheet">
     <div class="fac-header">
@@ -871,6 +871,30 @@
         // Elimina un overlay de factura anterior si quedó abierto
         const facAnterior = document.getElementById('facPrintOverlay');
         if (facAnterior) facAnterior.remove();
+        const stylesAnteriores = document.getElementById('facPrintOverlayStyles');
+        if (stylesAnteriores) stylesAnteriores.remove();
+
+        // ── Separa el bloque <style> del resto del HTML ─────────────────
+        // Antes el <style> quedaba como hijo de #facPrintOverlay, dentro
+        // del <body>. Eso hace que html2canvas (usado por html2pdf para
+        // "fotografiar" el recibo) no siempre respete esas reglas CSS al
+        // clonar el documento para renderizarlo, y el PDF/imagen compartida
+        // salía con el texto correcto pero SIN ningún estilo (sin cajas,
+        // sin colores, sin la tabla). Colocando el <style> en <head> —como
+        // corresponde— el recibo se ve igual en pantalla, al imprimir y al
+        // generar el PDF para compartir.
+        const matchEstilos = contenidoHTML.match(/^\s*<style>([\s\S]*?)<\/style>/);
+        const estilosCSS   = matchEstilos ? matchEstilos[1] : '';
+        const htmlSinEstilos = matchEstilos
+            ? contenidoHTML.slice(matchEstilos[0].length)
+            : contenidoHTML;
+
+        if (estilosCSS) {
+            const styleTag = document.createElement('style');
+            styleTag.id = 'facPrintOverlayStyles';
+            styleTag.textContent = estilosCSS;
+            document.head.appendChild(styleTag);
+        }
 
         // Inyecta el overlay DIRECTAMENTE en la página actual (sin window.open).
         // Esto evita por completo el bloqueador de ventanas emergentes y el
@@ -879,9 +903,13 @@
         // ventana nueva y termina cerrándose sola).
         const facOverlay = document.createElement('div');
         facOverlay.id = 'facPrintOverlay';
-        facOverlay.innerHTML = contenidoHTML;
+        facOverlay.innerHTML = htmlSinEstilos;
         facOverlay.addEventListener('click', function (e) {
-            if (e.target === facOverlay) facOverlay.remove();
+            if (e.target === facOverlay) {
+                facOverlay.remove();
+                const st = document.getElementById('facPrintOverlayStyles');
+                if (st) st.remove();
+            }
         });
         document.body.appendChild(facOverlay);
 
