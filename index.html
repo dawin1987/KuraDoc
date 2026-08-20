@@ -586,7 +586,7 @@ if ("serviceWorker" in navigator) {
                 <button class="modal-close" onclick="cerrarModalNuevoPaciente()">×</button>
             </div>
             
-            <div class="modal-body" style="padding: 8px 24px; max-height: 91vh; overflow-y: auto;">
+            <div class="modal-body" style="padding: 8px 24px; overflow-y: auto;">
                
 
    <div id="pexBuscador" style="
@@ -601,7 +601,7 @@ if ("serviceWorker" in navigator) {
                 text-transform:uppercase;letter-spacing:0.6px;
                 margin-bottom:4px;display:flex;align-items:center;gap:4px;">
         <span style="font-size:13px;">🔍</span>
-        Buscar paciente registrado en Hospital Cevicos
+        Buscar pacientes:
         <span style="margin-left:auto;font-size:9px;font-weight:600;
                      color:#6366f1;background:#e0e7ff;
                      padding:2px 8px;border-radius:20px;">Base interna</span>
@@ -642,10 +642,10 @@ if ("serviceWorker" in navigator) {
          background:#f0fdf4;border:1.5px solid #86efac;
          border-radius:10px;padding:10px 14px;">
         <div style="font-size:11px;font-weight:700;color:#15803d;margin-bottom:4px;">
-            ✅ Datos importados desde Hospital Cevicos — revisa y completa antes de guardar
+            ✅ Datos importados  — revisa y completa antes de guardar
         </div>
         <div id="pexChipInfo"
-             style="font-size:13px;color:#166534;font-weight:600;"></div>
+             style="font-size:12px;color:#166534;font-weight:600;"></div>
         <div id="pexAvisos" style="margin-top:6px;"></div>
     </div>
 </div>
@@ -659,7 +659,7 @@ if ("serviceWorker" in navigator) {
                         
                         <div>
                             <div style="font-size:10px; font-weight:800; color:#6366f1; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px; display:flex; align-items:center; gap:12px;">
-                                <span style="background:#e0e7ff; padding:2px 6px; border-radius:4px;">1</span> Datos personales
+                                <span style="background:#e0e7ff; padding:1px 3px; border-radius:4px;"></span> Datos personales
                             </div>
 
                             <div class="form-group">
@@ -667,7 +667,7 @@ if ("serviceWorker" in navigator) {
                                 <input type="text" id="secRegNombre" class="form-input" required placeholder="Ej: Juan Pérez" style="border-radius:8px;" oninput="window._sugerirEmailPaciente && window._sugerirEmailPaciente()">
                             </div>
 
-                            <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
+                       <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
                                 <div class="form-group">
                                     <label class="form-label">Fecha Nacimiento <span style="color:#dc2626">*</span></label>
                                     <input type="text" class="form-input" id="secRegFechaNac" placeholder="dd-mm-aaaa" maxlength="10" required style="border-radius:8px;" oninput="regAutoFormatFecha(this,'secRegEdad','secRegCedulaWrap')">
@@ -676,8 +676,8 @@ if ("serviceWorker" in navigator) {
                                     <label class="form-label">Edad</label>
                                     <input type="text" class="form-input" id="secRegEdad" readonly placeholder="Auto" style="background:#f8fafc; border-radius:8px; color:#64748b; text-align:center;">
                                 </div>
-                            </div>
-
+                        </div>
+                     <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
                             <div class="form-group">
                                 <label class="form-label">Género <span style="color:#dc2626">*</span></label>
                                 <select class="form-input" id="secRegGenero" required style="border-radius:8px;">
@@ -691,10 +691,11 @@ if ("serviceWorker" in navigator) {
                                 <label class="form-label">Cédula <span id="secRegCedulaStar" style="color:#dc2626">*</span></label>
                                 <input type="text" class="form-input" id="secRegCedula" placeholder="000-0000000-0" maxlength="13" style="border-radius:8px;" oninput="this.value=formatearCedula(this.value)">
                             </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Teléfono <span style="color:#dc2626">*</span></label>
-                                <input type="text" 
+                      </div>
+                         <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
+                               <div class="form-group">
+                                  <label class="form-label">Teléfono <span style="color:#dc2626">*</span></label>
+                                  <input type="text" 
                                        id="secRegTelefono" 
                                        class="form-input" 
                                        required 
@@ -702,19 +703,16 @@ if ("serviceWorker" in navigator) {
                                        placeholder="809-123-4567"
                                        maxlength="12"
                                        oninput="this.value = window.formatearTelefono(this.value)">
-                            </div>
-                        </div>
+                                </div>
+                                  <div class="form-group">
+                                     <label class="form-label">Seguro Médico (ARS)</label>
+                                      <select class="form-input" id="secRegSeguroARS" style="border-radius:8px;"></select>
+                                  </div>
+                         </div>
+                   </div>
 
-                        <div>
-                            <div style="font-size:10px; font-weight:800; color:#6366f1; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px; display:flex; align-items:center; gap:8px;">
-                                <span style="background:#e0e7ff; padding:2px 6px; border-radius:4px;">2</span> Seguro y Acceso
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Seguro Médico (ARS)</label>
-                                <select class="form-input" id="secRegSeguroARS" style="border-radius:8px;"></select>
-                            </div>
-
+                     <div>
+                    
                             <div class="form-group">
                                 <label class="form-label">Dirección (Sector / Ciudad)</label>
                                 <input type="text" id="secRegDireccion" class="form-input" placeholder="Ej: Los Jardines, Santo Domingo" style="border-radius:8px;">
