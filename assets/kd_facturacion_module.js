@@ -700,13 +700,40 @@
     //  ventana emergente de la cita).
     // ══════════════════════════════════════════════════════════════
     window._facImprimirFactura = async function (facturaId) {
+        // ── Abrir la ventana YA, en el mismo tick del clic ──────────────
+        // Si window.open() se llama DESPUÉS de un await (p.ej. el
+        // doc.get() de Firestore de aquí abajo), Chrome deja de contar
+        // el clic como "gesto de usuario" vigente (la consulta puede
+        // tardar más de lo que dura ese gesto, sobre todo en datos
+        // móviles). Resultado: el popup se bloquea, aparece el aviso
+        // "este sitio está intentando abrir una ventana emergente" y,
+        // en la app instalada (PWA/WebAPK en Android), el reintento tras
+        // "permitir" puede sacar a Android a relanzar la actividad
+        // principal en vez de abrir la ventana — se ve como que la app
+        // "se resetea" y vuelve a Gestión de Recepción.
+        // Por eso abrimos la ventana AHORA MISMO (vacía, con un loader)
+        // y recién después escribimos el contenido real cuando los
+        // datos de Firestore estén listos.
+        const winFactura = window.open('', '_blank', 'width=850,height=900,scrollbars=yes');
+        if (!winFactura) {
+            window._mostrarToast('Por favor permite ventanas emergentes para ver/imprimir la factura.', 'error');
+            return;
+        }
+        winFactura.document.write('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cargando factura…</title></head><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:\'Segoe UI\',Arial,sans-serif;color:#64748b;font-size:14px;">Cargando factura…</body></html>');
+        winFactura.document.close();
+
         let f;
         try {
             const doc = await db.collection('facturas').doc(facturaId).get();
-            if (!doc.exists) { window._mostrarToast('Factura no encontrada.', 'error'); return; }
+            if (!doc.exists) {
+                window._mostrarToast('Factura no encontrada.', 'error');
+                winFactura.close();
+                return;
+            }
             f = { id: doc.id, ...doc.data() };
         } catch (e) {
             window._mostrarToast('Error: ' + e.message, 'error');
+            winFactura.close();
             return;
         }
 
@@ -981,18 +1008,13 @@ window._kdCompartirFacturaWin = async function (btn) {
 </body>
 </html>`;
 
-        // ── Abre la factura en una ventana nueva ─────────────────────────
-        // Mismo patrón que ya funciona perfecto en el resto de KuraDoc
-        // (generarFacturaCita, el ticket en Hoja Carta, etc.): el botón
-        // "Imprimir" que verá el usuario vive DENTRO de este documento
-        // nuevo, así que cada clic sobre él es un gesto de usuario
-        // fresco y directo — igual que en el ticket Carta, que nunca se
-        // bloquea ni se demora.
-        const winFactura = window.open('', '_blank', 'width=850,height=900,scrollbars=yes');
-        if (!winFactura) {
-            window._mostrarToast('Por favor permite ventanas emergentes para ver/imprimir la factura.', 'error');
-            return;
-        }
+        // ── Escribe el contenido final en la ventana que ya abrimos ──────
+        // La ventana se abrió al inicio de esta función (mismo tick del
+        // clic del usuario). El botón "Imprimir" que verá el usuario
+        // vive DENTRO de este documento, así que cada clic sobre él es
+        // un gesto de usuario fresco y directo.
+        if (winFactura.closed) return; // el usuario cerró la ventana mientras cargaba
+        winFactura.document.open();
         winFactura.document.write(contenidoHTML);
         winFactura.document.close();
         try { winFactura.focus(); } catch (e) {}
