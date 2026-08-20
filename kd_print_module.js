@@ -295,15 +295,15 @@ body{
 .footer-tel{font-size:10px;color:#475569;margin-bottom:1mm;}
 .footer-marca{font-size:8px;color:#94a3b8;margin-top:2mm;}
 .no-print-bar{
-  text-align:center;margin-bottom:10px;display:flex;gap:8px;
+  text-align:center;margin-bottom:8px;display:flex;gap:6px;
   justify-content:center;flex-wrap:wrap;
 }
 .no-print-bar button{
-  border:none;padding:9px 18px;border-radius:8px;font-size:12.5px;
+  border:1px solid #e2e8f0;padding:5px 12px;border-radius:7px;font-size:11px;
   font-weight:700;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;
 }
-.btn-ticket-print{background:#0f172a;color:#fff;}
-.btn-ticket-close{background:#e2e8f0;color:#1e293b;}
+.btn-ticket-print{background:#f1f5f9;color:#0f172a;}
+.btn-ticket-close{background:#f1f5f9;color:#64748b;}
 </style>
 </head>
 <body>
@@ -641,15 +641,15 @@ body{
 </style>
 </head>
 <body>
-<div class="no-print" style="text-align:center;margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+<div class="no-print" style="text-align:center;margin-bottom:6px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
   <button onclick="window.print()"
-          style="background:#0f172a;color:white;border:none;padding:5px 24px;
-                 border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
+          style="background:#f1f5f9;color:#0f172a;border:1px solid #e2e8f0;padding:5px 12px;
+                 border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">
     🖨️ Imprimir / Guardar PDF
   </button>
   <button onclick="window.close()"
-          style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;
-                 padding:4px 20px;border-radius:8px;font-size:14px;cursor:pointer;">
+          style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;
+                 padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">
     ✕ Cerrar
   </button>
 </div>
