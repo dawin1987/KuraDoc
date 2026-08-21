@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
    AppMedicaRD — Lógica principal
-   © 2026 KuraDoc Vs 0.1. Todos los derechos reservados.
+   © 2026 KuraDoc. Todos los derechos reservados.
 ═══════════════════════════════════════════════════════ */
 
         // 🔥 CONFIGURACIÓN DE FIREBASE - REEMPLAZA CON TUS VALORES
@@ -1127,7 +1127,32 @@ function refreshCurrentView() {
         function initializeApp() {
             const defaultViews = { admin: 'centros', medico: 'agenda', secretaria: 'citas', paciente: 'inicio', emergencia: 'emergencias' };
             renderMobileNav();
-            navigateTo(defaultViews[appState.currentUserData.rol]);
+
+            // ── Restaurar dónde estaba el usuario antes de recargar ────
+            // Solo restauramos si la última vista guardada es del MISMO
+            // rol (evita, p.ej., que a una secretaria que inicia sesión
+            // en la misma pestaña donde antes había un médico logueado
+            // le aparezca "agenda", una vista que no le corresponde).
+            const rolActual = appState.currentUserData.rol;
+            let vistaARestaurar = defaultViews[rolActual];
+            let fichaARestaurar = null;
+            try {
+                const rolGuardado = sessionStorage.getItem('kd_lastRole');
+                const vistaGuardada = sessionStorage.getItem('kd_lastView');
+                if (rolGuardado === rolActual && vistaGuardada) {
+                    vistaARestaurar = vistaGuardada;
+                }
+                fichaARestaurar = sessionStorage.getItem('kd_lastFicha') || null;
+            } catch (e) { /* sessionStorage no disponible — cae al valor por defecto del rol */ }
+
+            navigateTo(vistaARestaurar);
+
+            // Si había una ficha de paciente abierta, la reabrimos una vez
+            // que la vista base ya cargó sus datos (pacientes, citas, etc.)
+            if (fichaARestaurar && typeof window.abrirFichaPaciente === 'function') {
+                setTimeout(() => window.abrirFichaPaciente(fichaARestaurar), 400);
+            }
+
             // ── Ajustar menú Configuración según rol ──
             setTimeout(_ajustarMenuConfiguracion, 50);
             // ── Verificar plan de prueba (solo para médicos) ──
@@ -1800,8 +1825,42 @@ function _aplicarVisibilidadNavMedico() {
 }
 
 
+// ══════════════════════════════════════════════════════════════════════
+// PERSISTENCIA DE PANTALLA — recordar dónde estaba el usuario
+// ══════════════════════════════════════════════════════════════════════
+// Al recargar/actualizar la página (F5, o el reinicio que a veces hace
+// Android al volver de una ventana emergente en la app instalada), la
+// app volvía SIEMPRE a la vista por defecto del rol (Agenda para
+// médico, Gestión de Recepción para secretaria), perdiendo dónde
+// estaba el usuario — por ejemplo, la ficha del paciente que tenía
+// abierta. Con esto guardamos la vista y, si aplica, la ficha de
+// paciente abierta, y las restauramos al recargar. Solo se usa
+// sessionStorage (no localStorage): sobrevive a un F5/recarga de la
+// misma pestaña, pero no "contamina" una sesión nueva en otra pestaña
+// ni queda pegado para siempre en el dispositivo.
+function _kdGuardarUltimaVista(view) {
+    try {
+        sessionStorage.setItem('kd_lastView', view || '');
+        sessionStorage.setItem('kd_lastRole', appState.currentUserData?.rol || '');
+    } catch (e) { /* sessionStorage no disponible — sin persistencia, sin romper nada */ }
+}
+function _kdGuardarUltimaFicha(pacienteUid) {
+    try {
+        if (pacienteUid) sessionStorage.setItem('kd_lastFicha', pacienteUid);
+        else sessionStorage.removeItem('kd_lastFicha');
+    } catch (e) {}
+}
+function _kdLimpiarEstadoNavegacion() {
+    try {
+        sessionStorage.removeItem('kd_lastView');
+        sessionStorage.removeItem('kd_lastRole');
+        sessionStorage.removeItem('kd_lastFicha');
+    } catch (e) {}
+}
+
 function navigateTo(view) {
     appState.currentView = view;
+    _kdGuardarUltimaVista(view);
     // Cerrar sidebar en móvil/tablet al navegar
     if (window.innerWidth <= 1024) closeSidebar();
     renderMobileNav();
@@ -18859,6 +18918,7 @@ window.cerrarFichaPaciente = function() {
         overlay.style.transition = '';
     }
     document.body.style.overflow = '';
+    _kdGuardarUltimaFicha(null);
 };
 
 // ── Dispatcher central para acciones desde la ficha de paciente ──
@@ -19065,6 +19125,7 @@ window.abrirFichaPaciente = function(pacienteUid) {
 
     _fpPacienteActual = p;
     _fpTabActiva = 'expediente';
+    _kdGuardarUltimaFicha(p.uid || p.id);
 
     let overlay = document.getElementById('fp-overlay');
     if (!overlay) {
