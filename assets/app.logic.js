@@ -908,6 +908,7 @@ function stopInactivityWatcher() {
 stopInactivityWatcher();
 pausedByInactivity = false;
 _clearPacientesCache();
+_kdLimpiarEstadoNavegacion();
      
 
             // Limpiar estado
