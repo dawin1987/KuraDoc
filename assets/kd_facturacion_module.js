@@ -936,30 +936,48 @@ window._kdCompartirFacturaWin = async function (btn) {
 
         const elemento = document.querySelector('.fac-sheet');
 
-        // ── Esperar a que el logo y la firma (imágenes remotas) estén
-        //    listas ANTES de capturar. html2canvas solo "fotografía" lo
-        //    que ya está pintado en pantalla: si el logo/firma todavía
-        //    se están descargando (o el navegador las cachea sin CORS),
-        //    salen en blanco en el PDF aunque a simple vista sí se vean
-        //    un instante después. Forzamos además crossOrigin="anonymous"
-        //    y una recarga limpia, porque si no, html2canvas puede
-        //    "tainear" el canvas y omitir la imagen igual aunque ya haya
-        //    cargado.
-        await Promise.all(Array.from(elemento.querySelectorAll('img')).map(function (img) {
-            return new Promise(function (resolve) {
-                function listo() { resolve(); }
-                if (!img.crossOrigin) {
-                    img.crossOrigin = 'anonymous';
-                    const src = img.src;
-                    img.src = '';
-                    img.src = src;
-                }
-                if (img.complete && img.naturalWidth > 0) { listo(); return; }
-                img.addEventListener('load', listo, { once: true });
-                img.addEventListener('error', listo, { once: true });
-                setTimeout(listo, 4000); // tope de seguridad por si una imagen falla
-            });
-        }));
+        // ── Incrustar logo y firma como base64 ANTES de capturar ────────
+        // html2canvas solo puede leer los píxeles de una imagen remota
+        // si el servidor que la sirve envía encabezados CORS (p.ej. un
+        // bucket de Firebase Storage con CORS configurado). Si no los
+        // envía, el logo o la firma se ven bien en pantalla pero salen
+        // en blanco en el PDF exportado — el canvas queda "tainted" y
+        // html2canvas descarta esa imagen en silencio.
+        // Para evitarlo del todo: descargamos cada imagen nosotros
+        // mismos con fetch() y la convertimos a base64 (data:), que el
+        // canvas siempre puede leer sin problema, sin importar su
+        // origen. Si el fetch falla (CORS bloqueado de verdad, o sin
+        // internet), lo detectamos y avisamos al usuario en vez de
+        // entregar un PDF con el logo/firma faltantes en silencio.
+        let huboErrorImagen = false;
+        const imgsFacturaSheet = Array.from(elemento.querySelectorAll('img'));
+        for (const img of imgsFacturaSheet) {
+            const original = img.getAttribute('src') || '';
+            if (!original || original.startsWith('data:')) continue; // ya local
+            if (!(img.complete && img.naturalWidth > 0)) {
+                await new Promise(function (resolve) {
+                    img.addEventListener('load', resolve, { once: true });
+                    img.addEventListener('error', resolve, { once: true });
+                    setTimeout(resolve, 4000);
+                });
+            }
+            try {
+                const resp = await fetch(original, { mode: 'cors', cache: 'no-store' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const blobImg = await resp.blob();
+                const dataUrl = await new Promise(function (resolve, reject) {
+                    const reader = new FileReader();
+                    reader.onload = function () { resolve(reader.result); };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blobImg);
+                });
+                img.setAttribute('data-src-original', original);
+                img.src = dataUrl;
+            } catch (imgErr) {
+                console.warn('[Facturación] No se pudo incrustar imagen para el PDF (posible CORS):', original, imgErr);
+                huboErrorImagen = true;
+            }
+        }
 
         const prevShadow   = elemento.style.boxShadow;
         const prevMargin   = elemento.style.margin;
@@ -989,10 +1007,21 @@ window._kdCompartirFacturaWin = async function (btn) {
 
         const blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
 
+        // Restaura los src originales (URLs remotas) — ya no se necesitan
+        // como base64 una vez capturado el PDF.
+        imgsFacturaSheet.forEach(function (img) {
+            const orig = img.getAttribute('data-src-original');
+            if (orig) { img.src = orig; img.removeAttribute('data-src-original'); }
+        });
+
         elemento.style.boxShadow = prevShadow;
         elemento.style.margin = prevMargin;
         elemento.style.width = prevWidth;
         elemento.style.maxWidth = prevMaxWidth;
+
+        if (huboErrorImagen) {
+            console.warn('[Facturación] El PDF se generó pero el logo y/o la firma no se pudieron incluir (bloqueo CORS del servidor de imágenes).');
+        }
 
         const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
 
@@ -1021,6 +1050,13 @@ window._kdCompartirFacturaWin = async function (btn) {
             }
         } else {
             _kdDescargarPdf();
+        }
+
+        if (huboErrorImagen) {
+            // Aviso al final, después de compartir/descargar, para no
+            // interrumpir el flujo — pero el usuario necesita saber que
+            // el PDF puede no traer el logo o la firma.
+            alert('El PDF se generó, pero el logo y/o la firma no se pudieron incluir (el servidor donde están alojados no permite cargarlos desde aquí). Avisa a soporte para revisar la configuración CORS del almacenamiento de imágenes.');
         }
     } catch (err) {
         console.error('Error generando PDF:', err);
