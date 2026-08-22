@@ -61,6 +61,106 @@
 
 
     // ══════════════════════════════════════════════════════════════
+    //  LOGO / FIRMA → BASE64 antes de generar el PDF
+    // ══════════════════════════════════════════════════════════════
+    // html2canvas necesita "leer" los píxeles del logo y la firma para
+    // dibujarlos en el PDF. Si esas imágenes vienen de Firebase Storage
+    // y el bucket no tiene CORS configurado para este dominio, el
+    // navegador SÍ deja mostrarlas normalmente en pantalla (un <img>
+    // simple no necesita CORS), pero le PROHÍBE a html2canvas leer sus
+    // píxeles — por eso el cuerpo de la factura sale bien y el logo/
+    // firma salen en blanco: no es que falten, es que el navegador
+    // bloquea la lectura por seguridad.
+    //
+    // La solución de raíz es habilitar CORS en el bucket de Storage
+    // (ver cors.json / instrucciones aparte). Este bloque hace el flujo
+    // más robusto y, sobre todo, deja saber EXACTAMENTE cuál imagen
+    // falló en vez de generar un PDF incompleto en silencio: se
+    // descargan el logo y la firma como base64 ANTES de llamar a
+    // html2canvas, así la captura ya no depende de que html2canvas
+    // negocie el CORS por su cuenta (más frágil, sobre todo en
+    // navegadores/webviews de apps instaladas).
+    async function _kdImagenABase64(url, timeoutMs) {
+        if (!url || url.indexOf('data:') === 0) return { ok: true, dataUrl: url };
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs || 8000);
+            const resp = await fetch(url, { mode: 'cors', cache: 'force-cache', signal: controller.signal });
+            clearTimeout(timer);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const blob = await resp.blob();
+            const dataUrl = await new Promise(function (resolve, reject) {
+                const reader = new FileReader();
+                reader.onload = function () { resolve(reader.result); };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            return { ok: true, dataUrl: dataUrl };
+        } catch (e) {
+            console.warn('[Facturación] No se pudo convertir a base64 (probable CORS):', url, e && e.message);
+            return { ok: false };
+        }
+    }
+
+    // Convierte a base64 todas las <img> dentro del nodo de la factura.
+    // Devuelve cuáles fallaron (por su alt: "Logo" / "Firma") y una
+    // función restaurar() para devolver los src originales al terminar.
+    async function _kdPrepararImagenesParaPDF(elemento) {
+        const imgs = Array.prototype.slice.call(elemento.querySelectorAll('img'));
+        const restaurar = [];
+        const fallidas = [];
+        for (const img of imgs) {
+            const original = img.getAttribute('src');
+            const resultado = await _kdImagenABase64(original);
+            if (resultado.ok) {
+                restaurar.push({ img: img, original: original });
+                img.src = resultado.dataUrl;
+            } else {
+                fallidas.push(img.getAttribute('alt') || 'imagen');
+            }
+        }
+        return {
+            fallidas: fallidas,
+            restaurar: function () {
+                restaurar.forEach(function (r) { r.img.src = r.original; });
+            }
+        };
+    }
+
+    function _kdDescribirImagenesFallidas(fallidas) {
+        const partes = fallidas.map(function (a) {
+            return (a || '').toLowerCase() === 'firma' ? 'la firma' : 'el logo';
+        });
+        if (partes.length <= 1) return partes[0] || 'una imagen';
+        return partes.join(' y ');
+    }
+
+    // Mismo aviso que ya conocías, ahora disparado por una detección
+    // real y precisa (antes de esto no existía en el código — el PDF
+    // simplemente salía incompleto sin avisar nada).
+    function _kdAvisoImagenesFallidas(fallidas) {
+        const lista = _kdDescribirImagenesFallidas(fallidas);
+        const plural = fallidas.length > 1;
+        const anterior = document.getElementById('kdAvisoImgOverlay');
+        if (anterior) anterior.remove();
+        const ov = document.createElement('div');
+        ov.id = 'kdAvisoImgOverlay';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.55);' +
+            'display:flex;align-items:center;justify-content:center;padding:20px;';
+        ov.innerHTML =
+            '<div style="background:#0f172a;color:#fff;border-radius:14px;padding:20px 22px;max-width:380px;' +
+            'box-shadow:0 10px 40px rgba(0,0,0,.35);font-size:14px;line-height:1.5;">' +
+            '<div>El PDF se generó, pero ' + lista + ' no se ' + (plural ? 'pudieron' : 'pudo') + ' incluir ' +
+            '(el servidor donde están alojados no permite cargarlos desde aquí). Avisa a soporte para revisar ' +
+            'la configuración CORS del almacenamiento de imágenes.</div>' +
+            '<div style="text-align:right;margin-top:14px;">' +
+            '<a href="#" onclick="document.getElementById(\'kdAvisoImgOverlay\').remove();return false;" ' +
+            'style="color:#60a5fa;font-weight:700;text-decoration:none;">Cerrar</a></div></div>';
+        ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+        document.body.appendChild(ov);
+    }
+
+    // ══════════════════════════════════════════════════════════════
     //  CATÁLOGO DE SERVICIOS — carga perezosa y compartida
     // ══════════════════════════════════════════════════════════════
     function _facCargarCatalogo() {
@@ -700,51 +800,15 @@
     //  ventana emergente de la cita).
     // ══════════════════════════════════════════════════════════════
     window._facImprimirFactura = async function (facturaId) {
-        // ── Abrir la ventana YA, en el mismo tick del clic ──────────────
-        // Si window.open() se llama DESPUÉS de un await (p.ej. el
-        // doc.get() de Firestore de aquí abajo), Chrome deja de contar
-        // el clic como "gesto de usuario" vigente (la consulta puede
-        // tardar más de lo que dura ese gesto, sobre todo en datos
-        // móviles). Resultado: el popup se bloquea, aparece el aviso
-        // "este sitio está intentando abrir una ventana emergente" y,
-        // en la app instalada (PWA/WebAPK en Android), el reintento tras
-        // "permitir" puede sacar a Android a relanzar la actividad
-        // principal en vez de abrir la ventana — se ve como que la app
-        // "se resetea" y vuelve a Gestión de Recepción.
-        // Por eso abrimos la ventana AHORA MISMO (vacía, con un loader)
-        // y recién después escribimos el contenido real cuando los
-        // datos de Firestore estén listos.
-        const winFactura = window.open('', '_blank', 'width=850,height=900,scrollbars=yes');
-        if (!winFactura) {
-            window._mostrarToast('Por favor permite ventanas emergentes para ver/imprimir la factura.', 'error');
-            return;
-        }
-        winFactura.document.write('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cargando factura…</title></head><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:\'Segoe UI\',Arial,sans-serif;color:#64748b;font-size:14px;">Cargando factura…</body></html>');
-        winFactura.document.close();
-
         let f;
         try {
             const doc = await db.collection('facturas').doc(facturaId).get();
-            if (!doc.exists) {
-                window._mostrarToast('Factura no encontrada.', 'error');
-                winFactura.close();
-                return;
-            }
+            if (!doc.exists) { window._mostrarToast('Factura no encontrada.', 'error'); return; }
             f = { id: doc.id, ...doc.data() };
         } catch (e) {
             window._mostrarToast('Error: ' + e.message, 'error');
-            winFactura.close();
             return;
         }
-
-        // Cierra el modal de resumen de factura (_facVerFactura) ANTES de
-        // abrir la vista de impresión. Antes se quedaba abierto por debajo
-        // del overlay de impresión: dos modales superpuestos generaban
-        // clics duplicados y, en la app instalada (PWA/WebAPK), más de
-        // una invocación de window.print() sin gesto de usuario fresco
-        // entre ellas — eso es justo lo que Chrome bloquea con el
-        // mensaje "se impidió que este sitio imprima automáticamente".
-        if (typeof closeModal === 'function') closeModal(true);
 
         const paciente = window._uGet(f.pacienteId);
         const medico = window._uGet(f.medicoId);
@@ -771,97 +835,89 @@
                 <td class="right">RD$ ${(Number(d.subtotal) || 0).toLocaleString()}</td>
             </tr>`).join('');
 
-        const nombreArchivo = 'Factura_' + f.numeroFactura + '.pdf';
-
-        // ── Documento HTML COMPLETO Y AUTÓNOMO ───────────────────────────
-        // Antes esto era un overlay (position:fixed + scroll interno)
-        // inyectado en la MISMA página vía innerHTML. Eso causaba dos
-        // problemas:
-        //  1) window.print() a veces tardaba y terminaba bloqueado por
-        //     Chrome ("se impidió que este sitio imprima automáticamente"),
-        //     especialmente en la app instalada (PWA/WebAPK en Android).
-        //  2) El PDF de "Compartir" salía en blanco: html2canvas no
-        //     captura bien un elemento hijo de un contenedor
-        //     position:fixed con scroll propio si el usuario había
-        //     hecho scroll dentro de él.
-        // La solución: usar el MISMO patrón que ya funciona perfecto en
-        // el resto de KuraDoc (generarFacturaCita en app.logic.js, el
-        // ticket en Hoja Carta, etc.): un documento nuevo y autónomo
-        // abierto con window.open(), sin overlays ni scroll fijo.
-        const contenidoHTML = `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Factura ${f.numeroFactura}</title>
+        const contenidoHTML = `
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Segoe UI', Arial, sans-serif; color:#1e293b; background:#f1f5f9; font-size:12.5px; }
+#facPrintOverlay, #facPrintOverlay * { margin:0; padding:0; box-sizing:border-box; }
+#facPrintOverlay {
+    position:fixed; inset:0; z-index:9999;
+    overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch;
+    font-family:'Segoe UI', Arial, sans-serif; color:#1e293b; background:#f1f5f9; font-size:12.5px;
+}
 @media print {
-    body { background:#fff !important; }
-    .no-print { display:none !important; }
-    .fac-sheet { box-shadow:none !important; margin:0 !important; width:auto !important; max-width:none !important; min-height:auto !important; }
+    body > *:not(#facPrintOverlay) { display:none !important; }
+    #facPrintOverlay { position:static !important; background:#fff !important; overflow:visible !important; }
+    #facPrintOverlay .no-print { display:none !important; }
+    #facPrintOverlay .fac-sheet { box-shadow:none !important; margin:0 !important; width:auto !important; max-width:none !important; min-height:auto !important; }
     @page { size: A4; margin: 15mm 14mm; }
 }
-.fac-sheet {
+/* Hoja A4 (210mm), fluida en pantalla: nunca excede el ancho del
+   dispositivo (así se ve completa y centrada en un smartphone) y
+   crece hasta el tamaño real de A4 en pantallas grandes / al imprimir. */
+#facPrintOverlay .fac-sheet {
     width:100%; max-width:210mm; min-height:auto;
     background:#fff; margin:14px auto;
     padding:9mm clamp(14px, 5vw, 14mm);
     box-shadow:0 2px 10px rgba(0,0,0,.12); position:relative;
 }
-.fac-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #0f172a; padding-bottom:10px; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
-.fac-logo { font-size:19px; font-weight:900; color:#0f172a; }
-.fac-logo span { color:#2563eb; }
-.fac-logo-img { max-height:58px; max-width:170px; object-fit:contain; display:block; }
-.fac-centro { font-weight:600; font-size:12px; color:#64748b; margin-top:1px; line-height:1.2; max-width:220px; }
-.fac-doc { text-align:right; }
-.fac-doc .tag { display:inline-block; background:#0f172a; color:#fff; font-size:10.5px; font-weight:800; padding:4px 11px; border-radius:4px; margin-bottom:5px; }
-.fac-doc .codigo { font-size:14px; font-weight:900; color:#0f172a; font-family:'Courier New',monospace; }
-.fac-doc .fecha { font-size:9.5px; color:#64748b; margin-top:2px; }
-.fac-estado { text-align:center; margin-bottom:14px; }
-.fac-estado span { display:inline-block; background:${cfg.bg}; color:${cfg.color}; border:1px solid ${cfg.color}55; font-size:11px; font-weight:800; padding:4px 16px; border-radius:20px; }
-.fac-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:10px; }
-.fac-box h4 { font-size:9.5px; text-transform:uppercase; color:#94a3b8; font-weight:800; margin-bottom:5px; }
-.fac-box .nombre { font-size:14px; font-weight:700; color:#0f172a; }
-.fac-row { display:flex; justify-content:space-between; font-size:10.5px; color:#475569; margin-top:3px; }
-.fac-row b { color:#1e293b; }
-table.fac-tabla { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:10.5px; }
-table.fac-tabla thead th { text-align:left; font-size:9px; text-transform:uppercase; color:#fff; background:#0f172a; padding:7px 8px; }
-table.fac-tabla thead th.right, table.fac-tabla td.right { text-align:right; }
-table.fac-tabla tbody td { padding:7px 8px; border-bottom:1px solid #e2e8f0; }
-.fac-resumen .r { display:flex; justify-content:space-between; font-size:11px; color:#475569; padding:3px 2px; }
-.fac-total { background:#0f172a; color:#fff; border-radius:8px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; margin:10px 0; }
-.fac-total .lbl { font-size:10.5px; text-transform:uppercase; opacity:.75; }
-.fac-total .val { font-size:20px; font-weight:900; color:#4ade80; }
-.fac-pago { display:flex; justify-content:space-between; font-size:10.5px; color:#475569; margin-bottom:14px; flex-wrap:wrap; gap:4px; }
-.fac-firma { margin-top:86px; display:flex; justify-content:space-between; gap:14px; }
-.fac-firma > div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:5px; font-size:9.5px; color:#64748b; }
-.fac-firma-img { display:block; max-height:48px; max-width:170px; object-fit:contain; margin:-50px auto auto auto; }
-.fac-firma-nombre { padding-top:3px; font-weight:700; color:#1e293b; font-size:10px; }
-.fac-firma-sub { margin-top:2px; font-size:8.5px; color:#94a3b8; }
-.fac-footer { margin-top:58px; text-align:center; font-size:8.9px; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:8px; line-height:1.5; }
-.print-btn { display:flex; gap:8px; justify-content:center; padding:14px 12px 6px; flex-wrap:wrap; position:sticky; top:0; background:#f1f5f9; z-index:2; }
-.print-btn button { padding:9px 16px; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
-.print-btn button:disabled { opacity:.6; cursor:wait; }
-.btn-print { background:#0f172a; color:#fff; }
-.btn-share { background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; }
-.btn-close { background:#e2e8f0; color:#1e293b; }
-.fac-header-logo { gap:10px; display:flex; justify-content:flex-start; align-items:center; flex-wrap:nowrap; }
-@media (max-width:620px) {
-    body { font-size:11.5px; }
-    .fac-sheet { padding:8mm 12px; margin:8px auto; }
-    .fac-logo { font-size:17px; }
-    .fac-total .val { font-size:18px; }
-    .print-btn button { padding:8px 12px; font-size:11.5px; }
-    .fac-header-logo { flex-direction:column; }
+#facPrintOverlay .fac-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #0f172a; padding-bottom:10px; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
+#facPrintOverlay .fac-logo { font-size:19px; font-weight:900; color:#0f172a; }
+#facPrintOverlay .fac-logo span { color:#2563eb; }
+#facPrintOverlay .fac-logo-img { max-height:58px; max-width:170px; object-fit:contain; display:block; }
+#facPrintOverlay .fac-centro {font-weight: 600; font-size:12px; color:#64748b; margin-top:1px; line-height:1.2; max-width:220px; }
+#facPrintOverlay .fac-doc { text-align:right; }
+#facPrintOverlay .fac-doc .tag { display:inline-block; background:#0f172a; color:#fff; font-size:10.5px; font-weight:800; padding:4px 11px; border-radius:4px; margin-bottom:5px; }
+#facPrintOverlay .fac-doc .codigo { font-size:14px; font-weight:900; color:#0f172a; font-family:'Courier New',monospace; }
+#facPrintOverlay .fac-doc .fecha { font-size:9.5px; color:#64748b; margin-top:2px; }
+#facPrintOverlay .fac-estado { text-align:center; margin-bottom:14px; }
+#facPrintOverlay .fac-estado span { display:inline-block; background:${cfg.bg}; color:${cfg.color}; border:1px solid ${cfg.color}55; font-size:11px; font-weight:800; padding:4px 16px; border-radius:20px; }
+#facPrintOverlay .fac-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+#facPrintOverlay .fac-box h4 { font-size:9.5px; text-transform:uppercase; color:#94a3b8; font-weight:800; margin-bottom:5px; }
+#facPrintOverlay .fac-box .nombre { font-size:14px; font-weight:700; color:#0f172a; }
+#facPrintOverlay .fac-row { display:flex; justify-content:space-between; font-size:10.5px; color:#475569; margin-top:3px; }
+#facPrintOverlay .fac-row b { color:#1e293b; }
+#facPrintOverlay table.fac-tabla { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:10.5px; }
+#facPrintOverlay table.fac-tabla thead th { text-align:left; font-size:9px; text-transform:uppercase; color:#fff; background:#0f172a; padding:7px 8px; }
+#facPrintOverlay table.fac-tabla thead th.right, #facPrintOverlay table.fac-tabla td.right { text-align:right; }
+#facPrintOverlay table.fac-tabla tbody td { padding:7px 8px; border-bottom:1px solid #e2e8f0; }
+#facPrintOverlay .fac-resumen .r { display:flex; justify-content:space-between; font-size:11px; color:#475569; padding:3px 2px; }
+#facPrintOverlay .fac-total { background:#0f172a; color:#fff; border-radius:8px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; margin:10px 0; }
+#facPrintOverlay .fac-total .lbl { font-size:10.5px; text-transform:uppercase; opacity:.75; }
+#facPrintOverlay .fac-total .val { font-size:20px; font-weight:900; color:#4ade80; }
+#facPrintOverlay .fac-pago { display:flex; justify-content:space-between; font-size:10.5px; color:#475569; margin-bottom:14px; flex-wrap:wrap; gap:4px; }
+#facPrintOverlay .fac-firma { margin-top:86px; display:flex; justify-content:space-between; gap:14px; }
+#facPrintOverlay .fac-firma > div { flex:1; text-align:center; border-top:1px solid #94a3b8; padding-top:5px; font-size:9.5px; color:#64748b; }
+#facPrintOverlay .fac-firma-img { display:block; max-height:48px; max-width:170px; object-fit:contain;     margin: -50px auto auto auto;
+ }
+#facPrintOverlay .fac-firma-nombre {padding-top: 3px; font-weight:700; color:#1e293b; font-size:10px; }
+#facPrintOverlay .fac-firma-sub { margin-top:2px; font-size:8.5px; color:#94a3b8; }
+#facPrintOverlay .fac-footer { margin-top:58px; text-align:center; font-size:8.9px; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:8px; line-height:1.5; }
+#facPrintOverlay .print-btn { display:flex; gap:8px; justify-content:center; padding:14px 12px 6px; flex-wrap:wrap; position:sticky; top:0; background:#f1f5f9; z-index:2; }
+#facPrintOverlay .print-btn button { padding:9px 16px; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
+#facPrintOverlay .print-btn button:disabled { opacity:.6; cursor:wait; }
+@media (max-width:420px) {
+    #facPrintOverlay { font-size:11.5px; }
+    #facPrintOverlay .fac-sheet { padding:8mm 12px; margin:8px auto; }
+    #facPrintOverlay .fac-logo { font-size:17px; }
+    #facPrintOverlay .fac-total .val { font-size:18px; }
+    #facPrintOverlay .print-btn button { padding:8px 12px; font-size:11.5px; }
+    #facPrintOverlay .fac-header-logo {gap: 10px; display: flex; justify-content: flex-start; justify-items: start; align-items: center; flex-wrap: nowrap; flex-direction: column;}
 }
+ 
+  @media (max-width:620px) {
+  
+    #facPrintOverlay .fac-header-logo {gap: 10px; display: flex; justify-content: flex-start; justify-items: start; align-items: center; flex-wrap: nowrap; flex-direction: column;}
+}
+ 
+#facPrintOverlay .btn-print { background:#0f172a; color:#fff; }
+#facPrintOverlay .btn-share { background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; }
+#facPrintOverlay .btn-close { background:#e2e8f0; color:#1e293b; }
+#facPrintOverlay .fac-header-logo {gap: 10px; display: flex; justify-content: flex-start; justify-items: start; align-items: center; flex-wrap: nowrap;}
+
 </style>
-</head>
-<body>
 <div class="print-btn no-print">
     <button class="btn-print" onclick="window.print()">🖨️ Imprimir</button>
-    <button class="btn-share" id="btnCompartirFac" onclick="_kdCompartirFacturaWin(this)">📤 Compartir / Descargar PDF</button>
-    <button class="btn-close" onclick="window.close()">✕ Cerrar</button>
+    <button class="btn-share" id="btnCompartirFac" onclick="_kdCompartirFactura(this)">📤 Compartir / Descargar PDF</button>
+    <button class="btn-close" onclick="document.getElementById('facPrintOverlay').remove()">✕ Cerrar</button>
 </div>
 <div class="fac-sheet">
     <div class="fac-header">
@@ -910,176 +966,153 @@ table.fac-tabla tbody td { padding:7px 8px; border-bottom:1px solid #e2e8f0; }
         Este documento es un recibo interno de KuraDoc y no constituye un comprobante fiscal (NCF) válido ante la DGII.<br>
         Conserve este recibo como constancia de su pago. · ${f.numeroFactura}
     </div>
-</div>
+</div>`;
 
-<!-- html2pdf.js se carga como parte de la carga INICIAL de esta ventana
-     (igual que el QR en los tickets), aprovechando el mismo gesto de
-     usuario que abrió la ventana — así el botón "Compartir" no tiene
-     que esperar la descarga por red al presionarlo. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script>
-window._kdCompartirFacturaWin = async function (btn) {
-    const original = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '⏳ Generando PDF...';
+        // Elimina un overlay de factura anterior si quedó abierto
+        const facAnterior = document.getElementById('facPrintOverlay');
+        if (facAnterior) facAnterior.remove();
 
-    try {
-        // Por si el script de html2pdf aún no terminó de cargar.
-        let intentos = 0;
-        while (typeof window.html2pdf === 'undefined' && intentos < 100) {
-            await new Promise(function (r) { setTimeout(r, 50); });
-            intentos++;
-        }
-        if (typeof window.html2pdf === 'undefined') {
-            throw new Error('No se pudo cargar la librería de generación de PDF.');
-        }
-
-        const elemento = document.querySelector('.fac-sheet');
-
-        // ── Incrustar logo y firma como base64 ANTES de capturar ────────
-        // html2canvas solo puede leer los píxeles de una imagen remota
-        // si el servidor que la sirve envía encabezados CORS (p.ej. un
-        // bucket de Firebase Storage con CORS configurado). Si no los
-        // envía, el logo o la firma se ven bien en pantalla pero salen
-        // en blanco en el PDF exportado — el canvas queda "tainted" y
-        // html2canvas descarta esa imagen en silencio.
-        // Para evitarlo del todo: descargamos cada imagen nosotros
-        // mismos con fetch() y la convertimos a base64 (data:), que el
-        // canvas siempre puede leer sin problema, sin importar su
-        // origen. Si el fetch falla (CORS bloqueado de verdad, o sin
-        // internet), lo detectamos y avisamos al usuario en vez de
-        // entregar un PDF con el logo/firma faltantes en silencio.
-        let huboErrorImagen = false;
-        const imgsFacturaSheet = Array.from(elemento.querySelectorAll('img'));
-        for (const img of imgsFacturaSheet) {
-            const original = img.getAttribute('src') || '';
-            if (!original || original.startsWith('data:')) continue; // ya local
-            if (!(img.complete && img.naturalWidth > 0)) {
-                await new Promise(function (resolve) {
-                    img.addEventListener('load', resolve, { once: true });
-                    img.addEventListener('error', resolve, { once: true });
-                    setTimeout(resolve, 4000);
-                });
-            }
-            try {
-                const resp = await fetch(original, { mode: 'cors', cache: 'no-store' });
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const blobImg = await resp.blob();
-                const dataUrl = await new Promise(function (resolve, reject) {
-                    const reader = new FileReader();
-                    reader.onload = function () { resolve(reader.result); };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(blobImg);
-                });
-                img.setAttribute('data-src-original', original);
-                img.src = dataUrl;
-            } catch (imgErr) {
-                console.warn('[Facturación] No se pudo incrustar imagen para el PDF (posible CORS):', original, imgErr);
-                huboErrorImagen = true;
-            }
-        }
-
-        const prevShadow   = elemento.style.boxShadow;
-        const prevMargin   = elemento.style.margin;
-        const prevWidth    = elemento.style.width;
-        const prevMaxWidth = elemento.style.maxWidth;
-        elemento.style.boxShadow = 'none';
-        elemento.style.margin = '0';
-        elemento.style.width = '210mm';
-        elemento.style.maxWidth = 'none';
-
-        // Espera dos frames para que el navegador aplique el nuevo
-        // ancho ANTES de capturar. Sin esto, html2canvas a veces
-        // "fotografía" el elemento a mitad de un reflow y el resultado
-        // sale en blanco o desalineado.
-        await new Promise(function (r) {
-            requestAnimationFrame(function () { requestAnimationFrame(r); });
+        // Inyecta el overlay DIRECTAMENTE en la página actual (sin window.open).
+        // Esto evita por completo el bloqueador de ventanas emergentes y el
+        // comportamiento inestable de window.open() dentro de la PWA instalada
+        // en Android (donde no hay "chrome" de navegador para mostrar la
+        // ventana nueva y termina cerrándose sola).
+        const facOverlay = document.createElement('div');
+        facOverlay.id = 'facPrintOverlay';
+        facOverlay.innerHTML = contenidoHTML;
+        facOverlay.addEventListener('click', function (e) {
+            if (e.target === facOverlay) facOverlay.remove();
         });
+        document.body.appendChild(facOverlay);
 
-        const nombreArchivo = ${JSON.stringify(nombreArchivo)};
-        const opciones = {
-            margin: 0,
-            filename: nombreArchivo,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, windowWidth: elemento.scrollWidth, scrollX: 0, scrollY: 0 },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
-
-        const blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
-
-        // Restaura los src originales (URLs remotas) — ya no se necesitan
-        // como base64 una vez capturado el PDF.
-        imgsFacturaSheet.forEach(function (img) {
-            const orig = img.getAttribute('data-src-original');
-            if (orig) { img.src = orig; img.removeAttribute('data-src-original'); }
-        });
-
-        elemento.style.boxShadow = prevShadow;
-        elemento.style.margin = prevMargin;
-        elemento.style.width = prevWidth;
-        elemento.style.maxWidth = prevMaxWidth;
-
-        if (huboErrorImagen) {
-            console.warn('[Facturación] El PDF se generó pero el logo y/o la firma no se pudieron incluir (bloqueo CORS del servidor de imágenes).');
+        // Carga html2pdf.js solo una vez (bajo demanda) — antes se cargaba
+        // vía <script src> dentro del documento de la ventana emergente.
+        function _kdCargarHtml2Pdf() {
+            if (window.html2pdf) return Promise.resolve();
+            if (window._kdHtml2PdfLoading) return window._kdHtml2PdfLoading;
+            window._kdHtml2PdfLoading = new Promise(function (resolve, reject) {
+                const s = document.createElement('script');
+                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                s.onload = function () { resolve(); };
+                s.onerror = function () { reject(new Error('No se pudo cargar html2pdf')); };
+                document.head.appendChild(s);
+            });
+            return window._kdHtml2PdfLoading;
         }
 
-        const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
+        // ── Precarga la librería EN CUANTO se abre el recibo ────────────
+        // Muy importante para móviles instalados como App (PWA/WebAPK):
+        // navigator.share() y window.print() solo se pueden disparar
+        // dentro de una ventana muy corta desde el toque del usuario
+        // ("gesto de usuario" / transient activation). Si html2pdf.js
+        // se descarga recién al presionar "Compartir", esa descarga por
+        // red consume esa ventana y el share termina fallando en
+        // silencio en la app instalada (aunque en el navegador normal,
+        // con más margen, sí llegue a tiempo). Precargarla aquí hace que
+        // al presionar el botón el PDF se genere de inmediato.
+        _kdCargarHtml2Pdf().catch(function () { /* se reintenta al compartir */ });
 
-        function _kdDescargarPdf() {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = nombreArchivo;
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-        }
+        // Genera el PDF a partir ÚNICAMENTE del nodo .fac-sheet dentro del
+        // overlay (los botones viven fuera de ese nodo, así que nunca quedan
+        // incluidos en el PDF ni en lo que se comparte).
+        window._kdCompartirFactura = async function (btn) {
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Generando PDF...';
+            let prepImg = null; // se restaura en el finally pase lo que pase
 
-        if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
             try {
-                await navigator.share({
-                    files: [archivo],
-                    title: ${JSON.stringify('Factura ' + f.numeroFactura)},
-                    text: ${JSON.stringify('Factura ' + f.numeroFactura)}
-                });
-            } catch (shareErr) {
-                if (shareErr && shareErr.name === 'AbortError') {
-                    // El usuario cerró el panel de compartir a propósito.
+                await _kdCargarHtml2Pdf();
+
+                const elemento = facOverlay.querySelector('.fac-sheet');
+                const prevShadow   = elemento.style.boxShadow;
+                const prevMargin   = elemento.style.margin;
+                const prevWidth    = elemento.style.width;
+                const prevMaxWidth = elemento.style.maxWidth;
+                // Se fija el ancho real de A4 antes de capturar: en pantalla
+                // el recibo es fluido (para verse bien en un smartphone),
+                // pero el PDF/impresión siempre debe salir en tamaño A4
+                // completo y con las proporciones correctas, sin importar
+                // el ancho de la pantalla desde la que se generó.
+                elemento.style.boxShadow = 'none';
+                elemento.style.margin = '0';
+                elemento.style.width = '210mm';
+                elemento.style.maxWidth = 'none';
+
+                // Descarga logo/firma como base64 ANTES de capturar, para
+                // que html2canvas no dependa de negociar CORS por su cuenta.
+                prepImg = await _kdPrepararImagenesParaPDF(elemento);
+
+                const nombreArchivo = 'Factura_' + f.numeroFactura + '.pdf';
+                const opciones = {
+                    margin: 0,
+                    filename: nombreArchivo,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true, windowWidth: elemento.scrollWidth },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+
+                const blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
+
+                elemento.style.boxShadow = prevShadow;
+                elemento.style.margin = prevMargin;
+                elemento.style.width = prevWidth;
+                elemento.style.maxWidth = prevMaxWidth;
+
+                if (prepImg.fallidas.length) {
+                    _kdAvisoImagenesFallidas(prepImg.fallidas);
+                }
+
+                const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
+
+                // Función de respaldo: descarga directa del PDF. Se usa si
+                // el dispositivo no soporta compartir archivos, o si
+                // navigator.share() falla (p.ej. por haber perdido el
+                // "gesto de usuario" — típico en apps instaladas/PWA).
+                function _kdDescargarPdf() {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = nombreArchivo;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+                    if (typeof window._mostrarToast === 'function') {
+                        window._mostrarToast('PDF descargado. Puedes adjuntarlo desde WhatsApp o tu correo.', 'success');
+                    }
+                }
+
+                if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+                    try {
+                        await navigator.share({
+                            files: [archivo],
+                            title: 'Factura ' + f.numeroFactura,
+                            text: 'Factura ' + f.numeroFactura
+                        });
+                    } catch (shareErr) {
+                        // AbortError = el usuario cerró el panel de compartir
+                        // a propósito: no es un error, no hacemos nada más.
+                        if (shareErr && shareErr.name === 'AbortError') {
+                            // no-op
+                        } else {
+                            // Cualquier otro fallo (p.ej. NotAllowedError por
+                            // pérdida del gesto de usuario, típico en app
+                            // instalada) — nunca lo dejamos en silencio:
+                            // caemos automáticamente a la descarga directa.
+                            console.warn('[Facturación] navigator.share falló, usando descarga directa:', shareErr);
+                            _kdDescargarPdf();
+                        }
+                    }
                 } else {
-                    console.warn('[Facturación] navigator.share falló, usando descarga directa:', shareErr);
                     _kdDescargarPdf();
                 }
+            } catch (err) {
+                console.error('Error generando PDF:', err);
+                alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
+            } finally {
+                if (prepImg) prepImg.restaurar(); // por si el error ocurrió después de convertir a base64
+                btn.disabled = false;
+                btn.innerHTML = original;
             }
-        } else {
-            _kdDescargarPdf();
-        }
-
-        if (huboErrorImagen) {
-            // Aviso al final, después de compartir/descargar, para no
-            // interrumpir el flujo — pero el usuario necesita saber que
-            // el PDF puede no traer el logo o la firma.
-            alert('El PDF se generó, pero el logo y/o la firma no se pudieron incluir (el servidor donde están alojados no permite cargarlos desde aquí). Avisa a soporte para revisar la configuración CORS del almacenamiento de imágenes.');
-        }
-    } catch (err) {
-        console.error('Error generando PDF:', err);
-        alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = original;
-    }
-};
-</script>
-</body>
-</html>`;
-
-        // ── Escribe el contenido final en la ventana que ya abrimos ──────
-        // La ventana se abrió al inicio de esta función (mismo tick del
-        // clic del usuario). El botón "Imprimir" que verá el usuario
-        // vive DENTRO de este documento, así que cada clic sobre él es
-        // un gesto de usuario fresco y directo.
-        if (winFactura.closed) return; // el usuario cerró la ventana mientras cargaba
-        winFactura.document.open();
-        winFactura.document.write(contenidoHTML);
-        winFactura.document.close();
-        try { winFactura.focus(); } catch (e) {}
+        };
     };
 
 })();
