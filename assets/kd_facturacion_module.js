@@ -39,7 +39,7 @@
         if (typeof window._facLogoHeaderHTML === 'function') return window._facLogoHeaderHTML(medico);
         const url = medico?.logoEspecialidadUrl;
         return url
-            ? `<img src="${url}" alt="Logo" class="fac-logo-img" crossorigin="anonymous">`
+            ? `<img src="${url}" alt="Logo" class="fac-logo-img">`
             : `<div class="fac-logo">Kura<span>Doc</span></div>`;
     }
 
@@ -53,7 +53,7 @@
     function _facFirmaMedicoHTML(medico, emisor) {
         if (typeof window._facFirmaMedicoHTML === 'function') return window._facFirmaMedicoHTML(medico, emisor);
         const firmaImg = medico?.firmaDigitalUrl
-            ? `<img src="${medico.firmaDigitalUrl}" alt="Firma" class="fac-firma-img" crossorigin="anonymous" style="margin-top: -50px; top: 10px;">`
+            ? `<img src="${medico.firmaDigitalUrl}" alt="Firma" class="fac-firma-img" style="margin-top: -50px; top: 10px;">`
             : '';
         const nombreMedico = medico?.nombre ? `Dr(a). ${medico.nombre}` : 'Firma del médico';
         return `<div class="fac-firma-medico">${firmaImg}<div class="fac-firma-nombre">${nombreMedico}</div></div>`;
@@ -912,33 +912,6 @@
         // al presionar el botón el PDF se genere de inmediato.
         _kdCargarHtml2Pdf().catch(function () { /* se reintenta al compartir */ });
 
-        // ── Convierte una imagen remota (logo/firma en Firebase Storage) a
-        // data:URL en base64. Esto evita por completo el problema de canvas
-        // "tainted" por CORS: una vez el <img src> es un data:URL, ya no es
-        // una petición cross-origin, así que html2canvas siempre puede
-        // leerlo, sin importar cómo esté configurado el CORS del bucket ni
-        // si el navegador cacheó la imagen antes en modo no-CORS.
-        // Si falla (sin internet, bucket caído, etc.) se resuelve a null y
-        // el código que la llama simplemente deja el src original — la
-        // exportación no se rompe, en el peor caso esa imagen puntual no
-        // sale en el PDF, igual que ahora.
-        async function _kdImagenABase64(url) {
-            try {
-                const resp = await fetch(url, { mode: 'cors' });
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const blob = await resp.blob();
-                return await new Promise(function (resolve, reject) {
-                    const reader = new FileReader();
-                    reader.onloadend = function () { resolve(reader.result); };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(blob);
-                });
-            } catch (e) {
-                console.warn('[Facturación] No se pudo convertir a base64 (logo/firma no saldrá en el PDF):', url, e);
-                return null;
-            }
-        }
-
         // Genera el PDF a partir ÚNICAMENTE del nodo .fac-sheet dentro del
         // overlay (los botones viven fuera de ese nodo, así que nunca quedan
         // incluidos en el PDF ni en lo que se comparte).
@@ -965,19 +938,6 @@
                 elemento.style.width = '210mm';
                 elemento.style.maxWidth = 'none';
 
-                // Reemplaza temporalmente el logo y la firma por su versión
-                // en base64 SOLO para la captura del PDF (ver _kdImagenABase64
-                // arriba). Se restauran los src originales pase lo que pase,
-                // en el "finally" de más abajo, para no afectar lo que se ve
-                // en pantalla.
-                const imgsFactura = elemento.querySelectorAll('.fac-logo-img, .fac-firma-img');
-                const srcsOriginales = [];
-                for (const img of imgsFactura) {
-                    srcsOriginales.push([img, img.src]);
-                    const b64 = await _kdImagenABase64(img.src);
-                    if (b64) img.src = b64;
-                }
-
                 const nombreArchivo = 'Factura_' + f.numeroFactura + '.pdf';
                 const opciones = {
                     margin: 0,
@@ -987,14 +947,7 @@
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 };
 
-                let blob;
-                try {
-                    blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
-                } finally {
-                    // Restaura los src originales (URLs de Firebase Storage)
-                    // para que la vista en pantalla no cambie.
-                    srcsOriginales.forEach(function ([img, src]) { img.src = src; });
-                }
+                const blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
 
                 elemento.style.boxShadow = prevShadow;
                 elemento.style.margin = prevMargin;
