@@ -39,7 +39,7 @@
         if (typeof window._facLogoHeaderHTML === 'function') return window._facLogoHeaderHTML(medico);
         const url = medico?.logoEspecialidadUrl;
         return url
-            ? `<img src="${url}" alt="Logo" class="fac-logo-img">`
+            ? `<img src="${url}" alt="Logo" class="fac-logo-img" crossorigin="anonymous">`
             : `<div class="fac-logo">Kura<span>Doc</span></div>`;
     }
 
@@ -53,112 +53,12 @@
     function _facFirmaMedicoHTML(medico, emisor) {
         if (typeof window._facFirmaMedicoHTML === 'function') return window._facFirmaMedicoHTML(medico, emisor);
         const firmaImg = medico?.firmaDigitalUrl
-            ? `<img src="${medico.firmaDigitalUrl}" alt="Firma" class="fac-firma-img" style="margin-top: -50px; top: 10px;">`
+            ? `<img src="${medico.firmaDigitalUrl}" alt="Firma" class="fac-firma-img" crossorigin="anonymous" style="margin-top: -50px; top: 10px;">`
             : '';
         const nombreMedico = medico?.nombre ? `Dr(a). ${medico.nombre}` : 'Firma del médico';
         return `<div class="fac-firma-medico">${firmaImg}<div class="fac-firma-nombre">${nombreMedico}</div></div>`;
     }
 
-
-    // ══════════════════════════════════════════════════════════════
-    //  LOGO / FIRMA → BASE64 antes de generar el PDF
-    // ══════════════════════════════════════════════════════════════
-    // html2canvas necesita "leer" los píxeles del logo y la firma para
-    // dibujarlos en el PDF. Si esas imágenes vienen de Firebase Storage
-    // y el bucket no tiene CORS configurado para este dominio, el
-    // navegador SÍ deja mostrarlas normalmente en pantalla (un <img>
-    // simple no necesita CORS), pero le PROHÍBE a html2canvas leer sus
-    // píxeles — por eso el cuerpo de la factura sale bien y el logo/
-    // firma salen en blanco: no es que falten, es que el navegador
-    // bloquea la lectura por seguridad.
-    //
-    // La solución de raíz es habilitar CORS en el bucket de Storage
-    // (ver cors.json / instrucciones aparte). Este bloque hace el flujo
-    // más robusto y, sobre todo, deja saber EXACTAMENTE cuál imagen
-    // falló en vez de generar un PDF incompleto en silencio: se
-    // descargan el logo y la firma como base64 ANTES de llamar a
-    // html2canvas, así la captura ya no depende de que html2canvas
-    // negocie el CORS por su cuenta (más frágil, sobre todo en
-    // navegadores/webviews de apps instaladas).
-    async function _kdImagenABase64(url, timeoutMs) {
-        if (!url || url.indexOf('data:') === 0) return { ok: true, dataUrl: url };
-        try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), timeoutMs || 8000);
-            const resp = await fetch(url, { mode: 'cors', cache: 'force-cache', signal: controller.signal });
-            clearTimeout(timer);
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            const blob = await resp.blob();
-            const dataUrl = await new Promise(function (resolve, reject) {
-                const reader = new FileReader();
-                reader.onload = function () { resolve(reader.result); };
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-            return { ok: true, dataUrl: dataUrl };
-        } catch (e) {
-            console.warn('[Facturación] No se pudo convertir a base64 (probable CORS):', url, e && e.message);
-            return { ok: false };
-        }
-    }
-
-    // Convierte a base64 todas las <img> dentro del nodo de la factura.
-    // Devuelve cuáles fallaron (por su alt: "Logo" / "Firma") y una
-    // función restaurar() para devolver los src originales al terminar.
-    async function _kdPrepararImagenesParaPDF(elemento) {
-        const imgs = Array.prototype.slice.call(elemento.querySelectorAll('img'));
-        const restaurar = [];
-        const fallidas = [];
-        for (const img of imgs) {
-            const original = img.getAttribute('src');
-            const resultado = await _kdImagenABase64(original);
-            if (resultado.ok) {
-                restaurar.push({ img: img, original: original });
-                img.src = resultado.dataUrl;
-            } else {
-                fallidas.push(img.getAttribute('alt') || 'imagen');
-            }
-        }
-        return {
-            fallidas: fallidas,
-            restaurar: function () {
-                restaurar.forEach(function (r) { r.img.src = r.original; });
-            }
-        };
-    }
-
-    function _kdDescribirImagenesFallidas(fallidas) {
-        const partes = fallidas.map(function (a) {
-            return (a || '').toLowerCase() === 'firma' ? 'la firma' : 'el logo';
-        });
-        if (partes.length <= 1) return partes[0] || 'una imagen';
-        return partes.join(' y ');
-    }
-
-    // Mismo aviso que ya conocías, ahora disparado por una detección
-    // real y precisa (antes de esto no existía en el código — el PDF
-    // simplemente salía incompleto sin avisar nada).
-    function _kdAvisoImagenesFallidas(fallidas) {
-        const lista = _kdDescribirImagenesFallidas(fallidas);
-        const plural = fallidas.length > 1;
-        const anterior = document.getElementById('kdAvisoImgOverlay');
-        if (anterior) anterior.remove();
-        const ov = document.createElement('div');
-        ov.id = 'kdAvisoImgOverlay';
-        ov.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.55);' +
-            'display:flex;align-items:center;justify-content:center;padding:20px;';
-        ov.innerHTML =
-            '<div style="background:#0f172a;color:#fff;border-radius:14px;padding:20px 22px;max-width:380px;' +
-            'box-shadow:0 10px 40px rgba(0,0,0,.35);font-size:14px;line-height:1.5;">' +
-            '<div>El PDF se generó, pero ' + lista + ' no se ' + (plural ? 'pudieron' : 'pudo') + ' incluir ' +
-            '(el servidor donde están alojados no permite cargarlos desde aquí). Avisa a soporte para revisar ' +
-            'la configuración CORS del almacenamiento de imágenes.</div>' +
-            '<div style="text-align:right;margin-top:14px;">' +
-            '<a href="#" onclick="document.getElementById(\'kdAvisoImgOverlay\').remove();return false;" ' +
-            'style="color:#60a5fa;font-weight:700;text-decoration:none;">Cerrar</a></div></div>';
-        ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
-        document.body.appendChild(ov);
-    }
 
     // ══════════════════════════════════════════════════════════════
     //  CATÁLOGO DE SERVICIOS — carga perezosa y compartida
@@ -1012,6 +912,33 @@
         // al presionar el botón el PDF se genere de inmediato.
         _kdCargarHtml2Pdf().catch(function () { /* se reintenta al compartir */ });
 
+        // ── Convierte una imagen remota (logo/firma en Firebase Storage) a
+        // data:URL en base64. Esto evita por completo el problema de canvas
+        // "tainted" por CORS: una vez el <img src> es un data:URL, ya no es
+        // una petición cross-origin, así que html2canvas siempre puede
+        // leerlo, sin importar cómo esté configurado el CORS del bucket ni
+        // si el navegador cacheó la imagen antes en modo no-CORS.
+        // Si falla (sin internet, bucket caído, etc.) se resuelve a null y
+        // el código que la llama simplemente deja el src original — la
+        // exportación no se rompe, en el peor caso esa imagen puntual no
+        // sale en el PDF, igual que ahora.
+        async function _kdImagenABase64(url) {
+            try {
+                const resp = await fetch(url, { mode: 'cors' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const blob = await resp.blob();
+                return await new Promise(function (resolve, reject) {
+                    const reader = new FileReader();
+                    reader.onloadend = function () { resolve(reader.result); };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            } catch (e) {
+                console.warn('[Facturación] No se pudo convertir a base64 (logo/firma no saldrá en el PDF):', url, e);
+                return null;
+            }
+        }
+
         // Genera el PDF a partir ÚNICAMENTE del nodo .fac-sheet dentro del
         // overlay (los botones viven fuera de ese nodo, así que nunca quedan
         // incluidos en el PDF ni en lo que se comparte).
@@ -1019,7 +946,6 @@
             const original = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '⏳ Generando PDF...';
-            let prepImg = null; // se restaura en el finally pase lo que pase
 
             try {
                 await _kdCargarHtml2Pdf();
@@ -1039,9 +965,18 @@
                 elemento.style.width = '210mm';
                 elemento.style.maxWidth = 'none';
 
-                // Descarga logo/firma como base64 ANTES de capturar, para
-                // que html2canvas no dependa de negociar CORS por su cuenta.
-                prepImg = await _kdPrepararImagenesParaPDF(elemento);
+                // Reemplaza temporalmente el logo y la firma por su versión
+                // en base64 SOLO para la captura del PDF (ver _kdImagenABase64
+                // arriba). Se restauran los src originales pase lo que pase,
+                // en el "finally" de más abajo, para no afectar lo que se ve
+                // en pantalla.
+                const imgsFactura = elemento.querySelectorAll('.fac-logo-img, .fac-firma-img');
+                const srcsOriginales = [];
+                for (const img of imgsFactura) {
+                    srcsOriginales.push([img, img.src]);
+                    const b64 = await _kdImagenABase64(img.src);
+                    if (b64) img.src = b64;
+                }
 
                 const nombreArchivo = 'Factura_' + f.numeroFactura + '.pdf';
                 const opciones = {
@@ -1052,16 +987,19 @@
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 };
 
-                const blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
+                let blob;
+                try {
+                    blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
+                } finally {
+                    // Restaura los src originales (URLs de Firebase Storage)
+                    // para que la vista en pantalla no cambie.
+                    srcsOriginales.forEach(function ([img, src]) { img.src = src; });
+                }
 
                 elemento.style.boxShadow = prevShadow;
                 elemento.style.margin = prevMargin;
                 elemento.style.width = prevWidth;
                 elemento.style.maxWidth = prevMaxWidth;
-
-                if (prepImg.fallidas.length) {
-                    _kdAvisoImagenesFallidas(prepImg.fallidas);
-                }
 
                 const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
 
@@ -1108,7 +1046,6 @@
                 console.error('Error generando PDF:', err);
                 alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
             } finally {
-                if (prepImg) prepImg.restaurar(); // por si el error ocurrió después de convertir a base64
                 btn.disabled = false;
                 btn.innerHTML = original;
             }
