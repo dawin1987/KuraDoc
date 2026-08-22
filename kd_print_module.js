@@ -311,7 +311,7 @@ body{
 <body>
 <div class="no-print-bar no-print">
   <button class="btn-ticket-print" onclick="window.print()">🖨️ Imprimir</button>
-  <button class="btn-ticket-close" onclick="if(window.parent&&window.parent._kdCerrarImpresion){window.parent._kdCerrarImpresion();}else{window.close();}">✕ Cerrar</button>
+  <button class="btn-ticket-close" onclick="window.close()">✕ Cerrar</button>
 </div>
 <div class="ticket">
 
@@ -649,7 +649,7 @@ body{
                  border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">
     🖨️ Imprimir / Guardar PDF
   </button>
-  <button onclick="if(window.parent&&window.parent._kdCerrarImpresion){window.parent._kdCerrarImpresion();}else{window.close();}"
+  <button onclick="window.close()"
           style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;
                  padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">
     ✕ Cerrar
@@ -879,60 +879,24 @@ body{
 // ══════════════════════════════════════════════════════════════════
 
 /**
- * Ejecuta window.print() con el HTML dado usando un iframe oculto EN LA
- * MISMA PÁGINA, en vez de window.open().
- *
- * Por qué: window.open() crea una ventana/pestaña nueva de verdad. En un
- * WebAPK instalado en Android eso saca a la app de su propio contexto de
- * navegación; al cerrar esa ventana, Android suele haber recuperado la
- * memoria del WebView original (o simplemente no hay "chrome" de
- * navegador para manejar bien la ventana nueva) y el resultado es que la
- * app se recarga por completo al volver. Ya se resolvió este mismo
- * problema para la factura (ver kd_facturacion_module.js) inyectando un
- * overlay en el documento actual; aquí aplicamos la misma idea para
- * imprimir: un iframe invisible que nunca sale del contexto de la app,
- * así que no hay nada que "recargar" al terminar.
- *
+ * Abre ventana y ejecuta window.print() con el HTML dado.
  * @param {string} html  - HTML completo de la plantilla
- * @param {string} ancho - '360px' para 80mm, '800px' para carta (ya no
- *                         se usa para dimensionar ventana, se deja el
- *                         parámetro por compatibilidad con las llamadas
- *                         existentes)
+ * @param {string} ancho - '360px' para 80mm, '800px' para carta
  */
 window.ejecutarImpresion = function(html, ancho) {
-    const anterior = document.getElementById('kdPrintFrame');
-    if (anterior) anterior.remove();
-
-    const iframe = document.createElement('iframe');
-    iframe.id = 'kdPrintFrame';
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
-    document.body.appendChild(iframe);
-
-    // Función global que el botón "✕ Cerrar" del ticket invoca (ver
-    // los onclick en generarHTMLTicket80mm / generarHTMLTicketCarta) para
-    // quitar el iframe sin depender de window.close().
-    window._kdCerrarImpresion = function () {
-        const f = document.getElementById('kdPrintFrame');
-        if (f) f.remove();
-    };
-
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(html);
-    doc.close();
-
-    // El script de QR ya hace window.print() dentro del HTML (que ahí
-    // dentro apunta al propio iframe); aquí como respaldo extra si el QR
-    // no carga a tiempo:
-    iframe.addEventListener('load', () => {
-        setTimeout(() => {
-            try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { console.error(e); }
-        }, 600);
+    ancho = ancho || '800px';
+    const win = window.open('', '_blank', `width=${parseInt(ancho)},height=700,scrollbars=yes`);
+    if (!win) {
+        alert('Por favor permite ventanas emergentes para imprimir.');
+        return;
+    }
+    win.document.write(html);
+    win.document.close();
+    // El script de QR ya hace window.print() dentro del HTML,
+    // aquí como respaldo extra si QR no carga:
+    win.addEventListener('load', () => {
+        setTimeout(() => { try { win.focus(); win.print(); } catch(e){} }, 600);
     });
-
-    // Limpieza automática por si el usuario nunca toca "Cerrar" (p. ej.
-    // completó la impresión y simplemente volvió a la app).
-    setTimeout(() => { const f = document.getElementById('kdPrintFrame'); if (f) f.remove(); }, 120000);
 };
 
 // ══════════════════════════════════════════════════════════════════
