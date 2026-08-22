@@ -176,9 +176,17 @@ function getConteoCitasPorDiaMedico() {
 // (Inserta esto justo después de: let activeListeners = []; )
 
 // Config
-const INACTIVITY_TIMEOUT_MS = 1 * 60 * 1000; // 5 minutos (ajusta si quieres)
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos (el valor real estaba en 1 minuto, no coincidía con el comentario)
 let inactivityTimer = null;
 let pausedByInactivity = false;
+// Margen de gracia antes de pausar por "documento oculto". Evita que
+// interrupciones momentáneas (una ventana emergente con window.open(),
+// el panel nativo de "Compartir", un selector de archivos, la cámara,
+// etc.) disparen la pausa de listeners. Solo se pausa si el documento
+// sigue oculto pasado este margen — es decir, si de verdad el usuario
+// cambió de app / minimizó, no si solo cerró un popup momentáneo.
+const HIDDEN_GRACE_MS = 15 * 1000; // 15 segundos
+let _hiddenGraceTimer = null;
 
 // Pausar escuchadores: simplemente unsubscribe() a todos y vaciar activeListeners.
 // Para reanudar usaremos loadAllData() que ya recrea listeners y repuebla activeListeners.
@@ -249,13 +257,28 @@ function startInactivityWatcher() {
   document.addEventListener('touchstart', resetInactivityTimer, { passive: true });
   document.addEventListener('click', resetInactivityTimer, { passive: true });
 
-  // Si la pestaña pierde visibilidad (user cambia de app), pausar inmediatamente
+  // Si la pestaña pierde visibilidad (user cambia de app), NO pausamos
+  // de inmediato — ver comentario de HIDDEN_GRACE_MS arriba. Esto es lo
+  // que causaba que, en modo WebAPK/PWA en móvil, al cerrar cualquier
+  // ventana emergente (ticket, factura, compartir) la app "se recargara":
+  // se tiraban todos los listeners de Firebase y, al volver, loadAllData()
+  // los reconstruía desde cero disparando refreshCurrentView() varias
+  // veces, lo que reiniciaba la vista actual de golpe.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      console.log('[Inactividad] Documento oculto: pausar listeners inmediatamente.');
-      pauseListenersForInactivity();
+      clearTimeout(_hiddenGraceTimer);
+      _hiddenGraceTimer = setTimeout(() => {
+        if (document.hidden) {
+          console.log('[Inactividad] Documento oculto por más de 15s: pausando listeners.');
+          pauseListenersForInactivity();
+        }
+      }, HIDDEN_GRACE_MS);
     } else {
-      // Al volver a ver la pestaña, reanudar y resetear timer
+      // Volvió a verse antes de que se cumpliera el margen de gracia:
+      // cancelamos la pausa pendiente, no hizo falta pausar nada.
+      clearTimeout(_hiddenGraceTimer);
+      // Al volver a ver la pestaña, reanudar (si de verdad se había
+      // pausado) y resetear el timer normal de inactividad.
       resetInactivityTimer();
     }
   });
@@ -275,6 +298,7 @@ function stopInactivityWatcher() {
   } catch (e) { /* silencioso */ }
 
   if (inactivityTimer) { clearTimeout(inactivityTimer); inactivityTimer = null; }
+  if (_hiddenGraceTimer) { clearTimeout(_hiddenGraceTimer); _hiddenGraceTimer = null; }
 }
 // --- Fin: Detección de inactividad ---
 
@@ -5453,6 +5477,72 @@ window.generarFacturaCita = function(citaId) {
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script>
+    // Descarga logo/firma como base64 antes de que html2canvas intente
+    // leer sus píxeles: si el bucket de Storage no tiene CORS habilitado
+    // para este dominio, el navegador deja MOSTRAR la imagen pero le
+    // bloquea a html2canvas leerla — por eso el cuerpo sale bien y el
+    // logo/firma salen en blanco, sin avisar nada. Esto lo hace robusto
+    // y, si de verdad falla, avisa con precisión cuál imagen fue.
+    function _kdImagenABase64(url) {
+        if (!url || url.indexOf('data:') === 0) return Promise.resolve({ ok: true, dataUrl: url });
+        return fetch(url, { mode: 'cors', cache: 'force-cache' }).then(function (resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.blob();
+        }).then(function (blob) {
+            return new Promise(function (resolve, reject) {
+                const reader = new FileReader();
+                reader.onload = function () { resolve({ ok: true, dataUrl: reader.result }); };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }).catch(function (e) {
+            console.warn('No se pudo convertir imagen a base64 (probable CORS):', url, e && e.message);
+            return { ok: false };
+        });
+    }
+
+    function _kdPrepararImagenesParaPDF(elemento) {
+        const imgs = Array.prototype.slice.call(elemento.querySelectorAll('img'));
+        const restaurar = [];
+        const fallidas = [];
+        return imgs.reduce(function (cadena, img) {
+            return cadena.then(function () {
+                const original = img.getAttribute('src');
+                return _kdImagenABase64(original).then(function (resultado) {
+                    if (resultado.ok) {
+                        restaurar.push({ img: img, original: original });
+                        img.src = resultado.dataUrl;
+                    } else {
+                        fallidas.push(img.getAttribute('alt') || 'imagen');
+                    }
+                });
+            });
+        }, Promise.resolve()).then(function () {
+            return {
+                fallidas: fallidas,
+                restaurar: function () { restaurar.forEach(function (r) { r.img.src = r.original; }); }
+            };
+        });
+    }
+
+    function _kdAvisoImagenesFallidas(fallidas) {
+        const partes = fallidas.map(function (a) {
+            return (a || '').toLowerCase() === 'firma' ? 'la firma' : 'el logo';
+        });
+        const lista = partes.length > 1 ? partes.join(' y ') : (partes[0] || 'una imagen');
+        const plural = fallidas.length > 1;
+        const anterior = document.getElementById('kdAvisoImgOverlay');
+        if (anterior) anterior.remove();
+        const ov = document.createElement('div');
+        ov.id = 'kdAvisoImgOverlay';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
+        ov.innerHTML = '<div style="background:#0f172a;color:#fff;border-radius:14px;padding:20px 22px;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.35);font-size:14px;line-height:1.5;">' +
+            '<div>El PDF se generó, pero ' + lista + ' no se ' + (plural ? 'pudieron' : 'pudo') + ' incluir (el servidor donde están alojados no permite cargarlos desde aquí). Avisa a soporte para revisar la configuración CORS del almacenamiento de imágenes.</div>' +
+            '<div style="text-align:right;margin-top:14px;"><a href="#" onclick="document.getElementById(\'kdAvisoImgOverlay\').remove();return false;" style="color:#60a5fa;font-weight:700;text-decoration:none;">Cerrar</a></div></div>';
+        ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+        document.body.appendChild(ov);
+    }
+
     function _kdCompartirFactura(btn) {
         const original = btn.innerHTML;
         btn.disabled = true;
@@ -5465,17 +5555,25 @@ window.generarFacturaCita = function(citaId) {
         elemento.style.margin = '0';
 
         const nombreArchivo = 'Factura_${codigo}.pdf';
-        const opciones = {
-            margin: 0,
-            filename: nombreArchivo,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: 'mm', format: [139.7, 215.9], orientation: 'portrait' }
-        };
+        let _prepImg = null;
 
-        html2pdf().set(opciones).from(elemento).outputPdf('blob').then(function (blob) {
+        _kdPrepararImagenesParaPDF(elemento).then(function (prep) {
+            _prepImg = prep;
+            const opciones = {
+                margin: 0,
+                filename: nombreArchivo,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: [139.7, 215.9], orientation: 'portrait' }
+            };
+            return html2pdf().set(opciones).from(elemento).outputPdf('blob');
+        }).then(function (blob) {
             elemento.style.boxShadow = prevShadow;
             elemento.style.margin = prevMargin;
+            if (_prepImg) {
+                _prepImg.restaurar();
+                if (_prepImg.fallidas.length) _kdAvisoImagenesFallidas(_prepImg.fallidas);
+            }
 
             const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
             if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
@@ -5496,6 +5594,7 @@ window.generarFacturaCita = function(citaId) {
         }).catch(function (err) {
             elemento.style.boxShadow = prevShadow;
             elemento.style.margin = prevMargin;
+            if (_prepImg) _prepImg.restaurar();
             console.error('Error generando PDF:', err);
             alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
             btn.disabled = false;
