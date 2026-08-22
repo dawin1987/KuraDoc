@@ -5251,7 +5251,7 @@ function _codigoFactura(cita) {
 window._facLogoHeaderHTML = function (medico) {
     const url = medico?.logoEspecialidadUrl;
     return url
-        ? `<img src="${url}" alt="Logo" class="fac-logo-img" crossorigin="anonymous">`
+        ? `<img src="${url}" alt="Logo" class="fac-logo-img">`
         : `<div class="fac-logo">Kura<span>Doc</span></div>`;
 };
 
@@ -5267,7 +5267,7 @@ window._facLogoHeaderHTML = function (medico) {
 // factura en particular — sin que la secretaria tenga que elegir nada.
 window._facFirmaMedicoHTML = function (medico, emisor) {
     const firmaImg = medico?.firmaDigitalUrl
-        ? `<img src="${medico.firmaDigitalUrl}" alt="Firma" class="fac-firma-img" crossorigin="anonymous">`
+        ? `<img src="${medico.firmaDigitalUrl}" alt="Firma" class="fac-firma-img">`
         : '';
     const nombreMedico = medico?.nombre ? `Dr(a). ${medico.nombre}` : 'Firma del médico';
     const idMedico  = medico?.uid || medico?.id || '';
@@ -26017,3 +26017,5 @@ window._imprimirEmergencia = async function(id) {
     </body></html>`);
     win.document.close();
 };
+
+
