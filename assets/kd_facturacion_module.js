@@ -61,6 +61,142 @@
 
 
     // ══════════════════════════════════════════════════════════════
+    //  LOGO / FIRMA → BASE64 antes de generar el PDF
+    // ══════════════════════════════════════════════════════════════
+    // html2canvas necesita "leer" los píxeles del logo y la firma para
+    // dibujarlos en el PDF. Si esas imágenes vienen de Firebase Storage
+    // y el bucket no tiene CORS configurado para este dominio, el
+    // navegador SÍ deja mostrarlas normalmente en pantalla (un <img>
+    // simple no necesita CORS), pero le PROHÍBE a html2canvas leer sus
+    // píxeles — por eso el cuerpo de la factura sale bien y el logo/
+    // firma salen en blanco: no es que falten, es que el navegador
+    // bloquea la lectura por seguridad.
+    //
+    // La solución de raíz es habilitar CORS en el bucket de Storage
+    // (ver cors.json / instrucciones aparte). Este bloque hace el flujo
+    // más robusto y, sobre todo, deja saber EXACTAMENTE cuál imagen
+    // falló en vez de generar un PDF incompleto en silencio: se
+    // descargan el logo y la firma como base64 ANTES de llamar a
+    // html2canvas, así la captura ya no depende de que html2canvas
+    // negocie el CORS por su cuenta (más frágil, sobre todo en
+    // navegadores/webviews de apps instaladas).
+    async function _kdImagenABase64(url, timeoutMs) {
+        if (!url || url.indexOf('data:') === 0) return { ok: true, dataUrl: url };
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs || 8000);
+            const resp = await fetch(url, { mode: 'cors', cache: 'force-cache', signal: controller.signal });
+            clearTimeout(timer);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const blob = await resp.blob();
+            const dataUrl = await new Promise(function (resolve, reject) {
+                const reader = new FileReader();
+                reader.onload = function () { resolve(reader.result); };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            return { ok: true, dataUrl: dataUrl };
+        } catch (e) {
+            console.warn('[Facturación] No se pudo convertir a base64 (probable CORS):', url, e && e.message);
+            return { ok: false };
+        }
+    }
+
+    // Convierte a base64 todas las <img> dentro del nodo de la factura.
+    // Además, calcula el tamaño "contain" (el mismo que ya se ve bien en
+    // pantalla, respetando max-height/max-width + object-fit) y lo aplica
+    // como width/height EXPLÍCITOS en px — html2canvas ignora object-fit
+    // (bug conocido de la librería: https://github.com/niklasvh/html2canvas/issues/725),
+    // así que sin esto el logo/firma se dibujan a su tamaño nativo (gigantes),
+    // descuadrando toda la factura. Con width/height fijos ya no depende de eso.
+    // Devuelve cuáles fallaron (por su alt: "Logo" / "Firma") y una
+    // función restaurar() para devolver src + estilos originales al terminar.
+    async function _kdPrepararImagenesParaPDF(elemento) {
+        const imgs = Array.prototype.slice.call(elemento.querySelectorAll('img'));
+        const restaurar = [];
+        const fallidas = [];
+        for (const img of imgs) {
+            const original = img.getAttribute('src');
+            const resultado = await _kdImagenABase64(original);
+            if (!resultado.ok) {
+                fallidas.push(img.getAttribute('alt') || 'imagen');
+                continue;
+            }
+
+            // Medimos el tamaño "contain" ANTES de tocar nada, usando lo
+            // que el navegador ya calculó bien en pantalla.
+            const cs = window.getComputedStyle(img);
+            const natW = img.naturalWidth || parseFloat(cs.maxWidth) || 170;
+            const natH = img.naturalHeight || parseFloat(cs.maxHeight) || 60;
+            const maxW = parseFloat(cs.maxWidth) || natW;
+            const maxH = parseFloat(cs.maxHeight) || natH;
+            const escala = Math.min(maxW / natW, maxH / natH);
+            const w = Math.round(natW * escala);
+            const h = Math.round(natH * escala);
+
+            restaurar.push({
+                img: img, original: original,
+                width: img.style.width, height: img.style.height,
+                maxWidth: img.style.maxWidth, maxHeight: img.style.maxHeight,
+                objectFit: img.style.objectFit
+            });
+
+            img.src = resultado.dataUrl;
+            img.style.width = w + 'px';
+            img.style.height = h + 'px';
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+            img.style.objectFit = 'fill'; // ya no hace falta: width/height ya son el tamaño final
+        }
+        return {
+            fallidas: fallidas,
+            restaurar: function () {
+                restaurar.forEach(function (r) {
+                    r.img.src = r.original;
+                    r.img.style.width = r.width;
+                    r.img.style.height = r.height;
+                    r.img.style.maxWidth = r.maxWidth;
+                    r.img.style.maxHeight = r.maxHeight;
+                    r.img.style.objectFit = r.objectFit;
+                });
+            }
+        };
+    }
+
+    function _kdDescribirImagenesFallidas(fallidas) {
+        const partes = fallidas.map(function (a) {
+            return (a || '').toLowerCase() === 'firma' ? 'la firma' : 'el logo';
+        });
+        if (partes.length <= 1) return partes[0] || 'una imagen';
+        return partes.join(' y ');
+    }
+
+    // Mismo aviso que ya conocías, ahora disparado por una detección
+    // real y precisa (antes de esto no existía en el código — el PDF
+    // simplemente salía incompleto sin avisar nada).
+    function _kdAvisoImagenesFallidas(fallidas) {
+        const lista = _kdDescribirImagenesFallidas(fallidas);
+        const plural = fallidas.length > 1;
+        const anterior = document.getElementById('kdAvisoImgOverlay');
+        if (anterior) anterior.remove();
+        const ov = document.createElement('div');
+        ov.id = 'kdAvisoImgOverlay';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.55);' +
+            'display:flex;align-items:center;justify-content:center;padding:20px;';
+        ov.innerHTML =
+            '<div style="background:#0f172a;color:#fff;border-radius:14px;padding:20px 22px;max-width:380px;' +
+            'box-shadow:0 10px 40px rgba(0,0,0,.35);font-size:14px;line-height:1.5;">' +
+            '<div>El PDF se generó, pero ' + lista + ' no se ' + (plural ? 'pudieron' : 'pudo') + ' incluir ' +
+            '(el servidor donde están alojados no permite cargarlos desde aquí). Avisa a soporte para revisar ' +
+            'la configuración CORS del almacenamiento de imágenes.</div>' +
+            '<div style="text-align:right;margin-top:14px;">' +
+            '<a href="#" onclick="document.getElementById(\'kdAvisoImgOverlay\').remove();return false;" ' +
+            'style="color:#60a5fa;font-weight:700;text-decoration:none;">Cerrar</a></div></div>';
+        ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+        document.body.appendChild(ov);
+    }
+
+    // ══════════════════════════════════════════════════════════════
     //  CATÁLOGO DE SERVICIOS — carga perezosa y compartida
     // ══════════════════════════════════════════════════════════════
     function _facCargarCatalogo() {
@@ -919,6 +1055,7 @@
             const original = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '⏳ Generando PDF...';
+            let prepImg = null; // se restaura en el finally pase lo que pase
 
             try {
                 await _kdCargarHtml2Pdf();
@@ -938,6 +1075,10 @@
                 elemento.style.width = '210mm';
                 elemento.style.maxWidth = 'none';
 
+                // Descarga logo/firma como base64 ANTES de capturar, para
+                // que html2canvas no dependa de negociar CORS por su cuenta.
+                prepImg = await _kdPrepararImagenesParaPDF(elemento);
+
                 const nombreArchivo = 'Factura_' + f.numeroFactura + '.pdf';
                 const opciones = {
                     margin: 0,
@@ -953,6 +1094,10 @@
                 elemento.style.margin = prevMargin;
                 elemento.style.width = prevWidth;
                 elemento.style.maxWidth = prevMaxWidth;
+
+                if (prepImg.fallidas.length) {
+                    _kdAvisoImagenesFallidas(prepImg.fallidas);
+                }
 
                 const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
 
@@ -999,6 +1144,7 @@
                 console.error('Error generando PDF:', err);
                 alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
             } finally {
+                if (prepImg) prepImg.restaurar(); // por si el error ocurrió después de convertir a base64
                 btn.disabled = false;
                 btn.innerHTML = original;
             }
