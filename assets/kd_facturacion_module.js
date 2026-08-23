@@ -197,6 +197,58 @@
     }
 
     // ══════════════════════════════════════════════════════════════
+    //  ESTILOS COMPUTADOS → INLINE antes de capturar
+    // ══════════════════════════════════════════════════════════════
+    // html2canvas es conocido por aplicar de forma poco confiable los
+    // estilos que vienen de clases/hoja <style> (background, bordes,
+    // border-radius, tablas...) — hay decenas de reportes de este mismo
+    // patrón en el repo oficial. Lo único que SIEMPRE respeta bien es
+    // el atributo style="" puesto directo en el elemento. En vez de
+    // reescribir toda la factura con estilos inline a mano (y tener que
+    // mantenerlo sincronizado para siempre), tomamos el estilo que el
+    // propio navegador YA calculó correctamente en pantalla (el que se
+    // ve perfecto) y lo copiamos tal cual como inline justo antes de
+    // capturar. Así html2canvas ya no necesita "entender" ninguna clase.
+    const _KD_PROPS_A_HORNEAR = [
+        'color', 'backgroundColor', 'fontSize', 'fontWeight', 'fontFamily', 'fontStyle',
+        'textAlign', 'textTransform', 'textDecoration', 'lineHeight', 'letterSpacing',
+        'borderTopWidth', 'borderTopStyle', 'borderTopColor',
+        'borderRightWidth', 'borderRightStyle', 'borderRightColor',
+        'borderBottomWidth', 'borderBottomStyle', 'borderBottomColor',
+        'borderLeftWidth', 'borderLeftStyle', 'borderLeftColor',
+        'borderRadius', 'borderCollapse',
+        'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+        'display', 'flexDirection', 'justifyContent', 'alignItems', 'flexWrap', 'gap',
+        'width', 'maxWidth', 'minWidth', 'height', 'minHeight',
+        'boxShadow', 'verticalAlign', 'opacity', 'boxSizing', 'whiteSpace',
+        'position', 'top', 'left', 'right', 'bottom', 'objectFit', 'overflow'
+    ];
+
+    function _kdHornearEstilosComputados(raiz) {
+        const nodos = [raiz].concat(Array.prototype.slice.call(raiz.querySelectorAll('*')));
+        const restaurar = [];
+        nodos.forEach(function (el) {
+            const cs = window.getComputedStyle(el);
+            const previo = el.getAttribute('style');
+            restaurar.push({ el: el, previo: previo });
+            let inline = '';
+            _KD_PROPS_A_HORNEAR.forEach(function (prop) {
+                const kebab = prop.replace(/[A-Z]/g, function (m) { return '-' + m.toLowerCase(); });
+                const val = cs[prop];
+                if (val) inline += kebab + ':' + val + ';';
+            });
+            el.setAttribute('style', inline);
+        });
+        return function restaurarEstilos() {
+            restaurar.forEach(function (r) {
+                if (r.previo === null) r.el.removeAttribute('style');
+                else r.el.setAttribute('style', r.previo);
+            });
+        };
+    }
+
+    // ══════════════════════════════════════════════════════════════
     //  CATÁLOGO DE SERVICIOS — carga perezosa y compartida
     // ══════════════════════════════════════════════════════════════
     function _facCargarCatalogo() {
@@ -1056,6 +1108,7 @@
             btn.disabled = true;
             btn.innerHTML = '⏳ Generando PDF...';
             let prepImg = null; // se restaura en el finally pase lo que pase
+            let restaurarEstilos = null;
 
             try {
                 await _kdCargarHtml2Pdf();
@@ -1079,6 +1132,11 @@
                 // que html2canvas no dependa de negociar CORS por su cuenta.
                 prepImg = await _kdPrepararImagenesParaPDF(elemento);
 
+                // Copia el estilo ya calculado por el navegador (el que se
+                // ve bien en pantalla) como inline en cada elemento — evita
+                // que html2canvas tenga que "entender" las clases CSS.
+                restaurarEstilos = _kdHornearEstilosComputados(elemento);
+
                 const nombreArchivo = 'Factura_' + f.numeroFactura + '.pdf';
                 const opciones = {
                     margin: 0,
@@ -1090,6 +1148,7 @@
 
                 const blob = await window.html2pdf().set(opciones).from(elemento).outputPdf('blob');
 
+                restaurarEstilos();
                 elemento.style.boxShadow = prevShadow;
                 elemento.style.margin = prevMargin;
                 elemento.style.width = prevWidth;
@@ -1144,6 +1203,7 @@
                 console.error('Error generando PDF:', err);
                 alert('No se pudo generar el PDF para compartir. Intenta con "Imprimir" y elige "Guardar como PDF" desde ahí.');
             } finally {
+                if (restaurarEstilos) restaurarEstilos(); // por si el error ocurrió después de hornear estilos
                 if (prepImg) prepImg.restaurar(); // por si el error ocurrió después de convertir a base64
                 btn.disabled = false;
                 btn.innerHTML = original;
