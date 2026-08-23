@@ -5576,6 +5576,51 @@ window.generarFacturaCita = function(citaId) {
         document.body.appendChild(ov);
     }
 
+    // html2canvas aplica de forma poco confiable los estilos que vienen de
+    // clases CSS (background, bordes, tablas...) pero siempre respeta lo
+    // puesto directo en style="". Copiamos el estilo ya calculado por el
+    // navegador (el que se ve bien en pantalla) como inline en cada
+    // elemento justo antes de capturar, para no depender de que
+    // html2canvas sepa leer las clases.
+    var _KD_PROPS_A_HORNEAR = [
+        'color', 'backgroundColor', 'fontSize', 'fontWeight', 'fontFamily', 'fontStyle',
+        'textAlign', 'textTransform', 'textDecoration', 'lineHeight', 'letterSpacing',
+        'borderTopWidth', 'borderTopStyle', 'borderTopColor',
+        'borderRightWidth', 'borderRightStyle', 'borderRightColor',
+        'borderBottomWidth', 'borderBottomStyle', 'borderBottomColor',
+        'borderLeftWidth', 'borderLeftStyle', 'borderLeftColor',
+        'borderRadius', 'borderCollapse',
+        'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+        'display', 'flexDirection', 'justifyContent', 'alignItems', 'flexWrap', 'gap',
+        'width', 'maxWidth', 'minWidth', 'height', 'minHeight',
+        'boxShadow', 'verticalAlign', 'opacity', 'boxSizing', 'whiteSpace',
+        'position', 'top', 'left', 'right', 'bottom', 'objectFit', 'overflow'
+    ];
+
+    function _kdHornearEstilosComputados(raiz) {
+        const nodos = [raiz].concat(Array.prototype.slice.call(raiz.querySelectorAll('*')));
+        const restaurar = [];
+        nodos.forEach(function (el) {
+            const cs = window.getComputedStyle(el);
+            const previo = el.getAttribute('style');
+            restaurar.push({ el: el, previo: previo });
+            let inline = '';
+            _KD_PROPS_A_HORNEAR.forEach(function (prop) {
+                const kebab = prop.replace(/[A-Z]/g, function (m) { return '-' + m.toLowerCase(); });
+                const val = cs[prop];
+                if (val) inline += kebab + ':' + val + ';';
+            });
+            el.setAttribute('style', inline);
+        });
+        return function restaurarEstilos() {
+            restaurar.forEach(function (r) {
+                if (r.previo === null) r.el.removeAttribute('style');
+                else r.el.setAttribute('style', r.previo);
+            });
+        };
+    }
+
     function _kdCompartirFactura(btn) {
         const original = btn.innerHTML;
         btn.disabled = true;
@@ -5589,9 +5634,11 @@ window.generarFacturaCita = function(citaId) {
 
         const nombreArchivo = 'Factura_${codigo}.pdf';
         let _prepImg = null;
+        let _restaurarEstilos = null;
 
         _kdPrepararImagenesParaPDF(elemento).then(function (prep) {
             _prepImg = prep;
+            _restaurarEstilos = _kdHornearEstilosComputados(elemento);
             const opciones = {
                 margin: 0,
                 filename: nombreArchivo,
@@ -5601,6 +5648,7 @@ window.generarFacturaCita = function(citaId) {
             };
             return html2pdf().set(opciones).from(elemento).outputPdf('blob');
         }).then(function (blob) {
+            if (_restaurarEstilos) _restaurarEstilos();
             elemento.style.boxShadow = prevShadow;
             elemento.style.margin = prevMargin;
             if (_prepImg) {
@@ -5625,6 +5673,7 @@ window.generarFacturaCita = function(citaId) {
             btn.disabled = false;
             btn.innerHTML = original;
         }).catch(function (err) {
+            if (_restaurarEstilos) _restaurarEstilos();
             elemento.style.boxShadow = prevShadow;
             elemento.style.margin = prevMargin;
             if (_prepImg) _prepImg.restaurar();
