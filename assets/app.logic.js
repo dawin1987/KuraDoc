@@ -522,7 +522,7 @@ function stopInactivityWatcher() {
                     },
                     'auth/invalid-credential': {
                         icon: '🔑', title: 'Correo o contraseña incorrectos',
-                        msg: '⚠️ Los datos ingresados no son correctos. Verifica tu correo y contraseña. Si no recuerdas tu contraseña, puedes restablecerla o contactar a la secretaria de tu médico para que te asista.',
+                        msg: '⚠️ Si no recuerdas tu contraseña, puedes restablecerla o contactar a la secretaria de tu médico para que te asista.',
                         field: 'loginPassword',
                         action: { label: '🔁 Restablecer mi contraseña', fn: '_mostrarOlvideContrasena' }
                     },
@@ -1881,6 +1881,20 @@ function _kdLimpiarEstadoNavegacion() {
         sessionStorage.removeItem('kd_lastRole');
         sessionStorage.removeItem('kd_lastFicha');
     } catch (e) {}
+}
+
+// Logo "KuraDoc" del header móvil (entre la hamburguesa y el perfil):
+// al tocarlo, manda al usuario a la vista principal de SU rol — no a
+// una vista fija. Reutiliza exactamente el mismo mecanismo con el que
+// initializeApp() ya decide la vista inicial (defaultViews por rol):
+// borrando la "última vista" guardada y recargando, initializeApp()
+// no tiene nada que restaurar y cae solo en el defaultViews del rol
+// actual (admin→centros, medico→agenda, secretaria→citas,
+// paciente→inicio, emergencia→emergencias). Así no duplicamos ese
+// mapeo en dos lugares.
+function _kdIrAInicioPorRol() {
+    _kdLimpiarEstadoNavegacion();
+    location.reload();
 }
 
 function navigateTo(view) {
@@ -26198,3 +26212,5 @@ window._imprimirEmergencia = async function(id) {
     </body></html>`);
     win.document.close();
 };
+
+
