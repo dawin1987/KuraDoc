@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Sistema de Gestión Integrar (KuraDoc)</title>
+    <title>Sistema de Gestión Integrar</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
@@ -323,6 +323,11 @@ if ("serviceWorker" in navigator) {
         <div id="sidebar-overlay" onclick="closeSidebar()"></div>
         <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Abrir menú" title="Menú">
             <span></span><span></span><span></span>
+        </button>
+
+        <!-- ── Logo KuraDoc — solo visible en móvil, entre la hamburguesa y el perfil ── -->
+        <button id="mobile-home-logo" onclick="_kdIrAInicioPorRol()" aria-label="Ir al inicio" title="Ir al inicio">
+            <img src="img/icon2.png?v=2" alt="KuraDoc">
         </button>
 
         <!-- ── Botón de perfil flotante ─────────────────── -->
