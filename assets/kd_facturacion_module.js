@@ -23,8 +23,8 @@
     let _facGuardando       = false;
     let _facContadorLinea   = 0;
 
-    let _facCatalogo        = null; // caché del catálogo de servicios
-    let _facCatalogoPromise = null;
+    let _facCatalogoPorMedico        = {}; // caché del catálogo, por médico dueño
+    let _facCatalogoPromisePorMedico = {}; // promesas de carga en curso, por médico
 
     function _facNuevoIdLinea() {
         return 'ln' + (++_facContadorLinea) + '_' + Date.now().toString(36);
@@ -249,75 +249,251 @@
     }
 
     // ══════════════════════════════════════════════════════════════
-    //  CATÁLOGO DE SERVICIOS — carga perezosa y compartida
+    //  CATÁLOGO DE SERVICIOS — privado por médico
     // ══════════════════════════════════════════════════════════════
-    function _facCargarCatalogo() {
-        if (_facCatalogo !== null) return Promise.resolve(_facCatalogo);
-        if (_facCatalogoPromise) return _facCatalogoPromise;
+    // Cada artículo pertenece a UN médico (campo medicoId). Un médico
+    // solo ve y gestiona su propio catálogo; una secretaria solo puede
+    // VER (nunca agregar/editar/eliminar) el catálogo del médico que
+    // tenga seleccionado en el modal — y solo puede seleccionar médicos
+    // para los que ya trabaja (medicoAsignadoId), igual que en el resto
+    // de la app. Esto se refuerza también en las reglas de seguridad de
+    // Firestore — el filtrado de aquí es para la experiencia de uso,
+    // no la única barrera.
 
-        _facCatalogoPromise = db.collection('servicios').get()
+    // ¿Puede el usuario logueado agregar/editar/eliminar en el catálogo
+    // de este médico? Solo el propio médico — nunca una secretaria,
+    // aunque esté facturando a nombre de él.
+    function _facPuedeGestionarCatalogo(medicoId) {
+        const u = appState.currentUserData;
+        if (!u || !medicoId) return false;
+        return u.rol === 'medico' && (u.uid || u.id) === medicoId;
+    }
+
+    function _facCargarCatalogo(medicoId) {
+        if (!medicoId) return Promise.resolve([]);
+        if (_facCatalogoPorMedico[medicoId]) return Promise.resolve(_facCatalogoPorMedico[medicoId]);
+        if (_facCatalogoPromisePorMedico[medicoId]) return _facCatalogoPromisePorMedico[medicoId];
+
+        const p = db.collection('servicios').where('medicoId', '==', medicoId).get()
             .then(snap => {
-                _facCatalogo = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                return _facCatalogo;
+                const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                lista.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+                _facCatalogoPorMedico[medicoId] = lista;
+                return lista;
             })
             .catch(e => {
                 console.error('[Facturación] Error cargando catálogo de servicios:', e);
-                _facCatalogo = [];
-                return _facCatalogo;
+                _facCatalogoPorMedico[medicoId] = [];
+                return [];
             })
-            .finally(() => { _facCatalogoPromise = null; });
+            .finally(() => { delete _facCatalogoPromisePorMedico[medicoId]; });
 
-        return _facCatalogoPromise;
+        _facCatalogoPromisePorMedico[medicoId] = p;
+        return p;
     }
 
     // Guarda en el catálogo (best-effort) los servicios nuevos que el
-    // usuario escribió a mano y que no venían de una sugerencia existente.
-    async function _facGuardarServiciosNuevos(detalles, centroMedicoId) {
+    // médico escribió a mano y que no venían de una sugerencia
+    // existente. Si quien factura es una secretaria, esto NO hace nada
+    // — el artículo se usa para esta factura únicamente; ella no puede
+    // darlo de alta en el catálogo del médico.
+    async function _facGuardarServiciosNuevos(detalles, medicoId, centroMedicoId) {
+        if (!_facPuedeGestionarCatalogo(medicoId)) return;
         try {
             const nuevos = detalles.filter(d => !d.servicioId);
+            if (!nuevos.length) return;
+            const catalogo = _facCatalogoPorMedico[medicoId] || [];
             for (const d of nuevos) {
-                const yaExiste = (_facCatalogo || []).some(s =>
-                    s.centroMedicoId === centroMedicoId &&
-                    (s.nombre || '').toLowerCase() === d.nombre.toLowerCase()
-                );
+                const yaExiste = catalogo.some(s => (s.nombre || '').toLowerCase() === d.nombre.toLowerCase());
                 if (yaExiste) continue;
                 const ref = await db.collection('servicios').add({
                     nombre: d.nombre,
                     precio: d.precioUnitario,
+                    medicoId,
                     centroMedicoId,
                     activo: true,
                     fechaCreacion: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                if (_facCatalogo) {
-                    _facCatalogo.push({ id: ref.id, nombre: d.nombre, precio: d.precioUnitario, centroMedicoId, activo: true });
-                }
+                catalogo.push({ id: ref.id, nombre: d.nombre, precio: d.precioUnitario, medicoId, centroMedicoId, activo: true });
             }
+            _facCatalogoPorMedico[medicoId] = catalogo;
         } catch (e) {
             console.warn('[Facturación] No se pudo actualizar el catálogo de servicios:', e);
         }
     }
 
-    window._facBuscarCatalogo = function (lineaId, texto) {
+    // ── Pequeño formulario reutilizable para agregar/editar un artículo ──
+    function _facMiniModalArticulo(opts) {
+        const anterior = document.getElementById('facMiniModalArticulo');
+        if (anterior) anterior.remove();
+        const ov = document.createElement('div');
+        ov.id = 'facMiniModalArticulo';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:10100;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:20px;';
+        ov.innerHTML = `
+            <div onclick="event.stopPropagation()" style="background:#fff;border-radius:14px;padding:20px;max-width:320px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);">
+                <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:14px;">${opts.titulo}</div>
+                <div class="form-group" style="margin-bottom:10px;">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" id="facMiniNombre" class="form-input" value="${(opts.nombre || '').replace(/"/g, '&quot;')}" style="font-size:13px;">
+                </div>
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label">Precio de referencia (RD$)</label>
+                    <input type="number" min="0" id="facMiniPrecio" class="form-input" value="${opts.precio || 0}" style="font-size:13px;">
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button type="button" onclick="document.getElementById('facMiniModalArticulo').remove()"
+                        style="flex:1;padding:10px;background:#f1f5f9;color:#334155;border:none;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;">Cancelar</button>
+                    <button type="button" id="facMiniBtnGuardar"
+                        style="flex:1;padding:10px;background:#0f172a;color:#fff;border:none;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;">Guardar</button>
+                </div>
+            </div>`;
+        ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+        document.body.appendChild(ov);
+        document.getElementById('facMiniBtnGuardar').onclick = function () {
+            const nombre = (document.getElementById('facMiniNombre').value || '').trim();
+            const precio = Number(document.getElementById('facMiniPrecio').value) || 0;
+            if (!nombre) { window._mostrarToast('Escribe un nombre.', 'error'); return; }
+            opts.onGuardar(nombre, precio);
+        };
+    }
+
+    window._facAgregarArticuloCatalogo = function (lineaId) {
+        const medicoId = document.getElementById('facMedicoId')?.value;
+        if (!_facPuedeGestionarCatalogo(medicoId)) return; // la UI ya no muestra el botón si no aplica; esto es refuerzo
+        _facMiniModalArticulo({
+            titulo: '+ Nuevo artículo en tu catálogo',
+            nombre: '', precio: 0,
+            onGuardar: async function (nombre, precio) {
+                const medico = window._uGet(medicoId);
+                try {
+                    const ref = await db.collection('servicios').add({
+                        nombre, precio, medicoId,
+                        centroMedicoId: medico?.centroMedicoId || null,
+                        activo: true,
+                        fechaCreacion: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    const catalogo = _facCatalogoPorMedico[medicoId] || [];
+                    catalogo.push({ id: ref.id, nombre, precio, medicoId, activo: true });
+                    _facCatalogoPorMedico[medicoId] = catalogo;
+                    document.getElementById('facMiniModalArticulo')?.remove();
+                    window._mostrarToast('Artículo agregado a tu catálogo.', 'success');
+                    if (lineaId) _facRenderDropdownCatalogo(lineaId, medicoId, '', true);
+                } catch (e) {
+                    console.error(e);
+                    window._mostrarToast('No se pudo guardar: ' + e.message, 'error');
+                }
+            }
+        });
+    };
+
+    window._facEditarArticuloCatalogo = function (servicioId, lineaId) {
+        const medicoId = document.getElementById('facMedicoId')?.value;
+        if (!_facPuedeGestionarCatalogo(medicoId)) return;
+        const catalogo = _facCatalogoPorMedico[medicoId] || [];
+        const s = catalogo.find(x => x.id === servicioId);
+        if (!s) return;
+        _facMiniModalArticulo({
+            titulo: '✏️ Editar artículo',
+            nombre: s.nombre, precio: s.precio,
+            onGuardar: async function (nombre, precio) {
+                try {
+                    await db.collection('servicios').doc(servicioId).update({ nombre, precio });
+                    s.nombre = nombre; s.precio = precio;
+                    document.getElementById('facMiniModalArticulo')?.remove();
+                    window._mostrarToast('Artículo actualizado.', 'success');
+                    if (lineaId) _facRenderDropdownCatalogo(lineaId, medicoId, '', true);
+                } catch (e) {
+                    console.error(e);
+                    window._mostrarToast('No se pudo actualizar: ' + e.message, 'error');
+                }
+            }
+        });
+    };
+
+    window._facEliminarArticuloCatalogo = function (servicioId, lineaId) {
+        const medicoId = document.getElementById('facMedicoId')?.value;
+        if (!_facPuedeGestionarCatalogo(medicoId)) return;
+        if (!confirm('¿Eliminar este artículo de tu catálogo? Esto no afecta facturas ya generadas.')) return;
+        db.collection('servicios').doc(servicioId).delete().then(function () {
+            const catalogo = _facCatalogoPorMedico[medicoId] || [];
+            _facCatalogoPorMedico[medicoId] = catalogo.filter(function (x) { return x.id !== servicioId; });
+            window._mostrarToast('Artículo eliminado.', 'success');
+            if (lineaId) _facRenderDropdownCatalogo(lineaId, medicoId, '', true);
+        }).catch(function (e) {
+            console.error(e);
+            window._mostrarToast('No se pudo eliminar: ' + e.message, 'error');
+        });
+    };
+
+    // Pinta el desplegable de sugerencias/listado para una línea. Se usa
+    // tanto al escribir (filtra en vivo) como al abrir la flechita
+    // (lista completa del médico seleccionado).
+    function _facRenderDropdownCatalogo(lineaId, medicoId, texto, forzarCompleta) {
         const cont = document.getElementById(`facSug${lineaId}`);
         if (!cont) return;
-        const q = (texto || '').trim().toLowerCase();
-        if (q.length < 2) { cont.style.display = 'none'; return; }
+        if (!medicoId) { cont.style.display = 'none'; return; }
 
-        const lista = _facCatalogo || [];
-        const res = lista.filter(s => (s.nombre || '').toLowerCase().indexOf(q) > -1).slice(0, 6);
-        if (!res.length) { cont.style.display = 'none'; return; }
+        _facCargarCatalogo(medicoId).then(function (lista) {
+            const q = (texto || '').trim().toLowerCase();
+            const completa = !!forzarCompleta || q.length === 0;
+            const res = q.length > 0
+                ? lista.filter(function (s) { return (s.nombre || '').toLowerCase().indexOf(q) > -1; })
+                : lista.slice();
 
-        cont.style.display = 'block';
-        cont.innerHTML = res.map(s => `
-            <div onmousedown="_facSeleccionarCatalogo('${lineaId}','${s.id}')"
-                 style="padding:8px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;gap:8px;">
-                <span>${s.nombre}</span>
-                <span style="color:#16a34a;font-weight:700;white-space:nowrap;">RD$ ${(Number(s.precio) || 0).toLocaleString()}</span>
-            </div>`).join('');
+            if (!completa && q.length < 2) { cont.style.display = 'none'; return; }
+
+            const puedeGestionar = _facPuedeGestionarCatalogo(medicoId);
+            const filas = res.slice(0, 30).map(function (s) {
+                return `
+                <div style="display:flex;align-items:center;gap:4px;padding:7px 8px;border-bottom:1px solid #f1f5f9;">
+                    <div onmousedown="_facSeleccionarCatalogo('${lineaId}','${s.id}')"
+                         style="flex:1;min-width:0;cursor:pointer;display:flex;justify-content:space-between;gap:8px;">
+                        <span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.nombre}</span>
+                        <span style="color:#16a34a;font-weight:700;font-size:12px;white-space:nowrap;">RD$ ${(Number(s.precio) || 0).toLocaleString()}</span>
+                    </div>
+                    ${puedeGestionar ? `
+                    <button type="button" onmousedown="event.preventDefault();_facEditarArticuloCatalogo('${s.id}','${lineaId}')" title="Editar"
+                        style="background:none;border:none;cursor:pointer;font-size:12px;padding:2px 4px;flex-shrink:0;">✏️</button>
+                    <button type="button" onmousedown="event.preventDefault();_facEliminarArticuloCatalogo('${s.id}','${lineaId}')" title="Eliminar"
+                        style="background:none;border:none;cursor:pointer;font-size:12px;padding:2px 4px;flex-shrink:0;">🗑</button>` : ''}
+                </div>`;
+            }).join('');
+
+            const footerAgregar = puedeGestionar ? `
+                <div onmousedown="_facAgregarArticuloCatalogo('${lineaId}')"
+                     style="padding:9px 10px;font-size:11.5px;font-weight:700;color:#1d4ed8;cursor:pointer;text-align:center;background:#eff6ff;">
+                    + Agregar nuevo artículo a mi catálogo
+                </div>` : '';
+
+            if (!res.length) {
+                cont.innerHTML = `<div style="padding:10px;font-size:11.5px;color:#94a3b8;text-align:center;">
+                    ${puedeGestionar ? 'Aún no tienes artículos guardados.' : 'Este médico no tiene artículos guardados.'}
+                </div>${footerAgregar}`;
+            } else {
+                cont.innerHTML = filas + footerAgregar;
+            }
+            cont.style.display = 'block';
+        });
+    }
+
+    window._facBuscarCatalogo = function (lineaId, texto) {
+        const medicoId = document.getElementById('facMedicoId')?.value;
+        _facRenderDropdownCatalogo(lineaId, medicoId, texto || '', false);
+    };
+
+    // Botón ▾ junto al campo — despliega el listado completo del médico
+    // seleccionado (o lo cierra, si ya estaba abierto).
+    window._facAbrirListaCatalogo = function (lineaId) {
+        const cont = document.getElementById(`facSug${lineaId}`);
+        if (cont && cont.style.display === 'block') { cont.style.display = 'none'; return; }
+        const medicoId = document.getElementById('facMedicoId')?.value;
+        _facRenderDropdownCatalogo(lineaId, medicoId, '', true);
     };
 
     window._facSeleccionarCatalogo = function (lineaId, servicioId) {
-        const s = (_facCatalogo || []).find(x => x.id === servicioId);
+        const medicoId = document.getElementById('facMedicoId')?.value;
+        const catalogo = _facCatalogoPorMedico[medicoId] || [];
+        const s = catalogo.find(x => x.id === servicioId);
         const l = _facLineas.find(x => x.id === lineaId);
         if (!s || !l) return;
         l.nombre = s.nombre;
@@ -325,6 +501,8 @@
         l.servicioId = s.id;
         _facRenderLineas();
         _facRecalcular();
+        const cont = document.getElementById(`facSug${lineaId}`);
+        if (cont) cont.style.display = 'none';
     };
 
 
