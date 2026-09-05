@@ -522,7 +522,7 @@ function stopInactivityWatcher() {
                     },
                     'auth/invalid-credential': {
                         icon: '🔑', title: 'Correo o contraseña incorrectos',
-                        msg: '⚠️ Si no recuerdas tu contraseña, puedes restablecerla o contactar a la secretaria de tu médico para que te asista.',
+                        msg: '⚠️ Los datos ingresados no son correctos. Verifica tu correo y contraseña. Si no recuerdas tu contraseña, puedes restablecerla o contactar a la secretaria de tu médico para que te asista.',
                         field: 'loginPassword',
                         action: { label: '🔁 Restablecer mi contraseña', fn: '_mostrarOlvideContrasena' }
                     },
@@ -1173,9 +1173,24 @@ function refreshCurrentView() {
             navigateTo(vistaARestaurar);
 
             // Si había una ficha de paciente abierta, la reabrimos una vez
-            // que la vista base ya cargó sus datos (pacientes, citas, etc.)
+            // que la vista base ya cargó sus datos (pacientes, citas, etc.).
+            // Los datos pueden tardar más de 400ms en llegar (conexión
+            // lenta, muchas citas/pacientes) — en vez de un solo intento
+            // "a ciegas" que a veces fallaba (paciente aún no cargado en
+            // memoria), reintentamos con espera creciente hasta que
+            // aparezca, o desistimos en silencio tras varios intentos.
             if (fichaARestaurar && typeof window.abrirFichaPaciente === 'function') {
-                setTimeout(() => window.abrirFichaPaciente(fichaARestaurar), 400);
+                let _intentosFicha = 0;
+                const _intentarAbrirFicha = () => {
+                    _intentosFicha++;
+                    const abierta = window.abrirFichaPaciente(fichaARestaurar);
+                    if (!abierta && _intentosFicha < 8) {
+                        setTimeout(_intentarAbrirFicha, 400 * _intentosFicha); // 400,800,1200...unos ~12s en total como máximo
+                    } else if (!abierta) {
+                        console.warn('[Ficha] No se pudo restaurar la ficha del paciente tras varios intentos:', fichaARestaurar);
+                    }
+                };
+                setTimeout(_intentarAbrirFicha, 400);
             }
 
             // ── Ajustar menú Configuración según rol ──
@@ -3460,40 +3475,32 @@ function renderCabeceraCitas() {
                     </p>
                 </div>
 
-                <div style="display: flex; gap: 10px; flex-grow: 1; max-width: 850px; align-items: center; flex-wrap: wrap;justify-content: space-between;">
+                <div class="citas-filtros-bar">
                     <input type="text" id="inputBusquedaGlobal"
                            placeholder="Buscar paciente..." 
-                           class="form-control search-input"
+                           class="form-control search-input citas-buscador-input"
                            value="${appState.filtroBusquedaTexto || ''}"
-                           oninput="appState.filtroBusquedaTexto = this.value; renderListaCitasSolo();"
-                           style="width: 30%;">
+                           oninput="appState.filtroBusquedaTexto = this.value; renderListaCitasSolo();">
 
-                    <div style="display: flex; align-items: center; gap: 5px; background: #f8fafc; padding: 5px; border-radius: 5px; border: 1px solid #e2e8f0;">
-                        <span style="font-size: 10px; color: #64748b; font-weight: bold;">DESDE:</span>
-                        <input type="date" id="fechaInicioRango" class="form-control" 
+                    <div class="citas-rango-wrap">
+                        <span class="citas-rango-label">DESDE:</span>
+                        <input type="date" id="fechaInicioRango" class="form-control citas-fecha-input" 
                                value="${appState.fechaInicioRango || ''}"
-                               onchange="aplicarFiltroRango()"
-                               style="font-size: 11px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                               onchange="aplicarFiltroRango()">
                         
-                        <span style="font-size: 10px; color: #64748b; font-weight: bold;">HASTA:</span>
-                        <input type="date" id="fechaFinRango" class="form-control" 
+                        <span class="citas-rango-label">HASTA:</span>
+                        <input type="date" id="fechaFinRango" class="form-control citas-fecha-input" 
                                value="${appState.fechaFinRango || ''}"
-                               onchange="aplicarFiltroRango()"
-                               style="font-size: 11px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                               onchange="aplicarFiltroRango()">
                     </div>
                     
-                <button class="btn ${appState.verTodasLasCitas ? 'btn-primary' : 'btn-secondary'} custom-tooltip" 
+                <button class="btn ${appState.verTodasLasCitas ? 'btn-primary' : 'btn-secondary'} custom-tooltip citas-btn-todas" 
         onclick="alternarVistaHistorico(); appState.fechaInicioRango=''; appState.fechaFinRango='';" 
-        data-tooltip="${appState.verTodasLasCitas ? 'Muestra solo las citas de hoy' : 'Filtra todas las citas desde la más antigua hasta la más reciente'}"
-        style="margin-right: 3px; border-radius: 3px; padding: 4px; width: 100px; white-space: nowrap; font-size: 13px;">
+        data-tooltip="${appState.verTodasLasCitas ? 'Muestra solo las citas de hoy' : 'Filtra todas las citas desde la más antigua hasta la más reciente'}">
     ${appState.verTodasLasCitas ? '📅 Ver Hoy' : '📂 Todas'}
 </button>
-                <button onclick="abrirModalNuevaCitaInteligente()"
+                <button class="citas-btn-nueva" onclick="abrirModalNuevaCitaInteligente()"
                     title="Agendar nueva cita"
-                    style="background:#2A9D8F;color:white;border:none;border-radius:8px;
-                           padding:6px 16px;font-size:13px;font-weight:700;cursor:pointer;
-                           display:flex;align-items:center;gap:5px;white-space:nowrap;
-                           box-shadow:0 2px 8px rgba(42,157,143,.3);transition:opacity .2s;"
                     onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
                     &#65291; Nueva Cita
                 </button>
@@ -5036,20 +5043,37 @@ window._guardarReprogramacion = async function(citaId) {
     // Verificar cupo disponible para la nueva fecha/tanda
     _alert('⏳ Verificando cupo disponible...','info');
     try {
-        const snapCupo = await db.collection('citas')
-            .where('medicoId','==', cita.medicoId)
-            .where('fechaStr','==', nuevaFecha)
-            .where('tanda','==', nuevaTanda)
-            .where('estado','in',['pendiente','confirmada'])
-            .get();
+        let otrasEnTanda;
+        if (navigator.onLine) {
+            try {
+                const snapCupo = await Promise.race([
+                    db.collection('citas')
+                        .where('medicoId','==', cita.medicoId)
+                        .where('fechaStr','==', nuevaFecha)
+                        .where('tanda','==', nuevaTanda)
+                        .where('estado','in',['pendiente','confirmada'])
+                        .get(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout verificando cupo')), 4000))
+                ]);
+                // Excluir la cita actual del conteo (no cuenta como nueva)
+                otrasEnTanda = snapCupo.docs.filter(d => d.id !== citaId).length;
+            } catch (eRed) {
+                console.warn('[Reagendar] No se pudo verificar cupo por red a tiempo, usando lo cargado en memoria:', eRed.message);
+            }
+        }
+        // Sin internet, o la consulta no llegó a tiempo: usamos lo que ya
+        // está cargado en memoria (con caché persistente de Firestore).
+        if (otrasEnTanda === undefined) {
+            otrasEnTanda = (appState.citas || []).filter(c =>
+                c.id !== citaId && c.medicoId === cita.medicoId && c.fechaStr === nuevaFecha &&
+                c.tanda === nuevaTanda && (c.estado === 'pendiente' || c.estado === 'confirmada')
+            ).length;
+        }
 
         const medico = _uGet(cita.medicoId);
         const cupoMax = nuevaTanda === 'vespertina'
             ? (medico?.cupoVespertina || 15)
             : (medico?.cupoMatutina  || 15);
-
-        // Excluir la cita actual del conteo (no cuenta como nueva)
-        const otrasEnTanda = snapCupo.docs.filter(d => d.id !== citaId).length;
 
         if (otrasEnTanda >= cupoMax) {
             _alert(`⚠️ No hay cupo disponible para la tanda ${nuevaTanda} en esa fecha (${otrasEnTanda}/${cupoMax}). Elige otra fecha o tanda.`, 'error');
@@ -5073,7 +5097,11 @@ window._guardarReprogramacion = async function(citaId) {
         };
 
         await db.collection('citas').doc(citaId).update(actualizar);
-        _alert('✅ Cita reprogramada correctamente.','success');
+        if (!navigator.onLine) {
+            _alert('📴 Sin conexión: la reprogramación se guardó en este dispositivo y se sincronizará sola cuando vuelva el internet.', 'info');
+        } else {
+            _alert('✅ Cita reprogramada correctamente.','success');
+        }
         setTimeout(() => closeModal(), 1400);
 
     } catch(e) {
@@ -6804,13 +6832,7 @@ async function procesarReservaCita(medicoId) {
 
     // 1. CALCULAR NÚMERO DE ORDEN (TURNO)
     // Se mantiene igual, pero usamos el médico y fecha seleccionada
-    const snapshot = await db.collection('citas')
-        .where('medicoId', '==', medicoId)
-        .where('fechaStr', '==', selectedDate)
-        .where('tanda', '==', selectedTanda)
-        .get();
-    
-    const numeroOrden = snapshot.size + 1;
+    const numeroOrden = (await _contarCitasParaOrden(medicoId, selectedDate, selectedTanda)) + 1;
 
     // 2. CÁLCULO DE COSTOS BASADO EN EL PACIENTE
     // Usamos 'datosPaciente' para verificar el seguro, no al usuario logueado
@@ -6880,6 +6902,8 @@ async function procesarReservaCita(medicoId) {
         appState.pacienteTemporalParaCita = null;
         closeModal();
 
+        const sinConexion = !navigator.onLine;
+
         if (esSecretaria) {
             // Refrescar vistas
             if (appState.currentView === 'gestion-recepcion') {
@@ -6889,9 +6913,16 @@ async function procesarReservaCita(medicoId) {
             }
             // ── Mostrar modal de ticket automáticamente ──────────
             const citaConId = { id: docRef.id, ...nuevaCita, numeroOrden };
+            if (sinConexion && typeof window._mostrarToast === 'function') {
+                window._mostrarToast('📴 Sin conexión: la cita se guardó en este dispositivo y se sincronizará sola cuando vuelva el internet.', 'info');
+            }
             setTimeout(() => abrirModalTicketCita(citaConId), 300);
         } else {
-            alert(`¡Cita solicitada! Tu turno es el #${numeroOrden}`);
+            if (sinConexion) {
+                alert(`📴 Sin conexión: tu cita quedó guardada en este dispositivo (turno provisional #${numeroOrden}) y se sincronizará sola cuando vuelva el internet.`);
+            } else {
+                alert(`¡Cita solicitada! Tu turno es el #${numeroOrden}`);
+            }
             navigateTo('mis-citas');
         }
 
@@ -19316,7 +19347,7 @@ window.abrirFichaPaciente = function(pacienteUid) {
     // 3. Si sigue sin aparecer, no podemos abrir la ficha
     if (!p) {
         console.warn("No se encontró el objeto del paciente para el UID:", pacienteUid);
-        return;
+        return false;
     }
 
     _fpPacienteActual = p;
@@ -19341,6 +19372,8 @@ window.abrirFichaPaciente = function(pacienteUid) {
     if (centroId) {
         setTimeout(() => _fpCargarRecordDisplay(p.uid || p.id), 200);
     }
+
+    return true;
 };
 
 // ── Contenido según tab ───────────────────────────────────────────
@@ -23162,6 +23195,36 @@ window.procesarReservaCita = async function(medicoId) {
 };
 
 // Versión de guardar cita que incluye el número de récord
+// Cuenta cuántas citas ya existen para ese médico/fecha/tanda, para
+// calcular el número de orden del turno. Si hay internet, se consulta
+// en vivo (como siempre). Si no hay internet — o la consulta tarda
+// demasiado porque nunca se cacheó esa combinación exacta antes —, se
+// cuenta con lo que ya está cargado en memoria (appState.citas), que
+// gracias a la caché persistente de Firestore ya sobrevive sin
+// conexión. Para un médico es exacto (su listener trae todas sus
+// citas); para una secretaria es el mejor estimado disponible con lo
+// último cargado, y se corrige solo cuando la cita se sincroniza.
+async function _contarCitasParaOrden(medicoId, fechaStr, tanda) {
+    if (navigator.onLine) {
+        try {
+            const snap = await Promise.race([
+                db.collection('citas')
+                    .where('medicoId', '==', medicoId)
+                    .where('fechaStr', '==', fechaStr)
+                    .where('tanda', '==', tanda)
+                    .get(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout consultando turno')), 4000))
+            ]);
+            return snap.size;
+        } catch (e) {
+            console.warn('[Cita] No se pudo confirmar el turno por red a tiempo, usando lo cargado en memoria:', e.message);
+        }
+    }
+    return (appState.citas || []).filter(c =>
+        c.medicoId === medicoId && c.fechaStr === fechaStr && c.tanda === tanda
+    ).length;
+}
+
 async function _guardarCitaConRecord(medicoId) {
     const medico = _uGet(medicoId);
     const TIPOS_CITA_LABEL = {
@@ -23183,13 +23246,7 @@ async function _guardarCitaConRecord(medicoId) {
     const datosPaciente = esSecretaria ? appState.pacienteTemporalParaCita : appState.currentUserData;
     const pacienteIdParaCita = esSecretaria ? appState.pacienteTemporalParaCita.uid : appState.currentUser.uid;
 
-    const snapshot = await db.collection('citas')
-        .where('medicoId', '==', medicoId)
-        .where('fechaStr', '==', selectedDate)
-        .where('tanda', '==', selectedTanda)
-        .get();
-
-    const numeroOrden = snapshot.size + 1;
+    const numeroOrden = (await _contarCitasParaOrden(medicoId, selectedDate, selectedTanda)) + 1;
     const costoBase = medico.tipoServicio === 'privado' ? (medico.costoConsulta || 0) : 0;
     const descSeguro = datosPaciente.tieneSeguro && medico.tipoServicio === 'privado' ? 1000 : 0;
     const costoFinal = Math.max(0, costoBase - descSeguro);
@@ -23258,6 +23315,8 @@ async function _guardarCitaConRecord(medicoId) {
         appState._recordParaCita = '';
         closeModal();
 
+        const sinConexion = !navigator.onLine;
+
         if (esSecretaria) {
             if (appState.currentView === 'gestion-recepcion') {
                 if (typeof actualizarTodoCitas === 'function') actualizarTodoCitas();
@@ -23265,9 +23324,16 @@ async function _guardarCitaConRecord(medicoId) {
                 if (typeof renderListaPacientesSolo === 'function') renderListaPacientesSolo();
             }
             const citaConId = { id: docRef.id, ...nuevaCita, numeroOrden };
+            if (sinConexion && typeof window._mostrarToast === 'function') {
+                window._mostrarToast('📴 Sin conexión: la cita se guardó en este dispositivo y se sincronizará sola cuando vuelva el internet.', 'info');
+            }
             setTimeout(() => abrirModalTicketCita(citaConId), 300);
         } else {
-            alert(`¡Cita solicitada! Tu turno es el #${numeroOrden}`);
+            if (sinConexion) {
+                alert(`📴 Sin conexión: tu cita quedó guardada en este dispositivo (turno provisional #${numeroOrden}) y se sincronizará sola cuando vuelva el internet.`);
+            } else {
+                alert(`¡Cita solicitada! Tu turno es el #${numeroOrden}`);
+            }
             navigateTo('mis-citas');
         }
     } catch(e) {
