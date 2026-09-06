@@ -612,7 +612,7 @@ Specificity: (0,2,0)
 }
         .modal-footer {
     flex: 0 0 auto;               /* siempre visible, nunca se corta ni hay que buscarlo */
-    padding: 10px 24px;
+    padding: 29px 24px;
     border-top: 1px solid #e2e8f0;
     background: #fff;
 }
