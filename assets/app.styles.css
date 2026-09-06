@@ -578,7 +578,7 @@ Specificity: (0,2,0)
 @media (max-width: 640px) {
     .modal-overlay {
         align-items: flex-start;
-        padding-top: calc(40px + 16px);
+        padding-top: calc(50px + 16px);
         padding-left: 1px;
         padding-right: 1px;
     }
