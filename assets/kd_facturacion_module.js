@@ -592,7 +592,7 @@
         document.getElementById('modalContainer').innerHTML = _facRenderModal(p, medicosDisponibles, medicoPreseleccionado);
         _facRenderLineas();
         _facRecalcular();
-        _facCargarCatalogo();
+        _facCargarCatalogo(medicoPreseleccionado.uid || medicoPreseleccionado.id);
     };
 
     function _facRenderModal(p, medicos, medicoSel) {
@@ -700,6 +700,12 @@
         const centro = (appState.centrosMedicos || []).find(c => c.id === medico?.centroMedicoId);
         const centroInput = document.getElementById('facCentroNombre');
         if (centroInput) centroInput.value = centro?.nombre || '—';
+
+        // El catálogo es privado por médico — al cambiar de médico
+        // precargamos el suyo y cerramos cualquier listado que hubiera
+        // quedado abierto con artículos del médico anterior.
+        _facCargarCatalogo(medicoId);
+        document.querySelectorAll('[id^="facSug"]').forEach(function (el) { el.style.display = 'none'; });
     };
 
 
@@ -717,10 +723,12 @@
                         oninput="_facActualizarLinea('${l.id}','nombre',this.value);_facBuscarCatalogo('${l.id}',this.value)"
                         onblur="setTimeout(()=>{var d=document.getElementById('facSug${l.id}');if(d)d.style.display='none';},200)"
                         style="flex:1;font-size:12.5px;padding:8px 10px;">
+                    <button type="button" onmousedown="event.preventDefault();_facAbrirListaCatalogo('${l.id}')" title="Ver mi catálogo de artículos"
+                        style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:8px;width:34px;cursor:pointer;font-size:11px;">▾</button>
                     <button type="button" onclick="_facEliminarLinea('${l.id}')" title="Eliminar servicio"
                         style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:8px;width:34px;cursor:pointer;font-size:13px;">🗑</button>
                 </div>
-                <div id="facSug${l.id}" style="display:none;position:absolute;left:10px;right:44px;top:44px;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.1);max-height:160px;overflow-y:auto;"></div>
+                <div id="facSug${l.id}" style="display:none;position:absolute;left:10px;right:86px;top:44px;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.1);max-height:220px;overflow-y:auto;"></div>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;">
                     <div>
                         <label style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Cant.</label>
@@ -878,7 +886,7 @@
                 ultimaActualizacion: firebase.firestore.FieldValue.serverTimestamp()
             });
 
-            _facGuardarServiciosNuevos(detalles, centroMedicoId); // best-effort, no bloquea
+            _facGuardarServiciosNuevos(detalles, medico.uid || medico.id, centroMedicoId); // best-effort, no bloquea
 
             window._mostrarToast(`✅ Factura ${numeroFactura} creada correctamente.`, 'success');
             closeModal();
