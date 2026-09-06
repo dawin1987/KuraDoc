@@ -599,7 +599,7 @@
         const centro = (appState.centrosMedicos || []).find(c => c.id === medicoSel.centroMedicoId);
         return `
         <div class="modal-overlay">
-            <div class="modal" onclick="event.stopPropagation()" style="max-width:640px;max-height:92vh;overflow-y:auto;border-radius:12px;">
+            <div class="modal" onclick="event.stopPropagation()" style="max-width:640px;max-height:92dvh;border-radius:12px;">
                 <div class="modal-header" style="border:none;padding:22px 24px 8px;">
                     <h2 class="modal-title">🧾 Nueva Factura</h2>
                     <button class="modal-close" onclick="closeModal()">×</button>
@@ -680,11 +680,12 @@
                     </div>
                     <div id="facSaldoInfo" style="font-size:11.5px;color:#64748b;margin-bottom:12px;"></div>
 
-                    <div class="form-group" style="margin-bottom:14px;">
+                    <div class="form-group" style="margin-bottom:4px;">
                         <label class="form-label">Observaciones (opcional)</label>
                         <textarea class="form-input" id="facObservacion" rows="2" placeholder="Notas sobre esta factura..."></textarea>
                     </div>
-
+                </div>
+                <div class="modal-footer">
                     <button type="button" id="facBtnGuardar" onclick="_facGuardarFactura()"
                         style="width:100%;padding:13px;background:linear-gradient(135deg,#0f172a,#334155);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">
                         💾 Guardar Factura
