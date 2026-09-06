@@ -561,7 +561,7 @@ Specificity: (0,2,0)
     z-index: 5000;
     padding: 20px;
     padding-top: max(70px, env(safe-area-inset-top, 70px));
-    overflow-y: auto;
+    overflow: hidden; /* el overlay ya NO scrollea: evita el doble-scroll con .modal */
 }
 @media (min-width: 1025px) {
     .modal-overlay {
@@ -583,8 +583,19 @@ Specificity: (0,2,0)
         padding-right: 1px;
     }
 }
-        .modal {height: auto; background: white; border-radius: 12px; max-width: 600px; width: 100%; max-height: calc(100vh - 90px); overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
-        .modal-header {background: #a6f3e1; color: #f36850; justify-content: space-between;     align-items: center; padding: 10px;  display: flex;gap: 15px;margin-bottom: 0px; align-items: center;/* border-radius: 10px 10px 0px 0px; */}
+        .modal {
+    height: auto;
+    background: white;
+    border-radius: 12px;
+    max-width: 600px;
+    width: 100%;
+    max-height: calc(100dvh - 90px); /* dvh: se ajusta a la barra de direcciones móvil */
+    overflow: hidden;           /* el modal ya no scrollea directamente... */
+    display: flex;              /* ...ahora es un contenedor flex-column: */
+    flex-direction: column;     /* header fijo + body con scroll + footer fijo */
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+}
+        .modal-header {background: #a6f3e1; color: #f36850; justify-content: space-between;     align-items: center; padding: 10px;  display: flex;gap: 15px;margin-bottom: 0px; align-items: center; flex: 0 0 auto;/* border-radius: 10px 10px 0px 0px; */}
         .modal-title { margin-left: 20px; color: #665d5d;font-size: 18px; font-weight: bold; }
         .modal-close { border-radius: 4px; width: 25px; height: 30px; border: none; background: #ffdcdcd6; font-size: 24px; cursor: pointer; color: #4e4a4a; }
         .modal-body {
@@ -593,7 +604,18 @@ Specificity: (0,2,0)
     align-content: stretch;
     justify-content: space-around;
     flex-direction: column;
-    flex-wrap: nowrap;}
+    flex-wrap: nowrap;
+    flex: 1 1 auto;              /* ocupa el espacio restante entre header y footer */
+    overflow-y: auto;            /* ÚNICO contenedor que scrollea dentro del modal */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;/* impide que el gesto se "escape" hacia el overlay */
+}
+        .modal-footer {
+    flex: 0 0 auto;               /* siempre visible, nunca se corta ni hay que buscarlo */
+    padding: 10px 24px;
+    border-top: 1px solid #e2e8f0;
+    background: #fff;
+}
         
    /* Mobile Nav */
         .mobile-nav {
