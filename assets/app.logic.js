@@ -6013,12 +6013,19 @@ function renderListaPacientesSolo() {
                       onmouseout="this.style.background='${trBg}'">
             <td style="padding:10px 12px;white-space:nowrap;">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="width:34px;height:34px;border-radius:10px;background:${avatarBg};
-                                display:flex;align-items:center;justify-content:center;
-                                font-size:13px;font-weight:800;color:${avatarColor};flex-shrink:0;
-                                border:1px solid rgba(0,0,0,.06);">
-                        ${iniciales}
-                    </div>
+           <div 
+                     onclick="abrirFichaPaciente('${p.uid}')"
+                           onmouseover="this.style.opacity='.75'" 
+                    onmouseout="this.style.opacity='1'"
+                     title="Ver ficha del paciente"
+                    style="width:34px;height:34px;border-radius:10px;background:${avatarBg};
+                             display:flex;align-items:center;justify-content:center;
+                              font-size:13px;font-weight:800;color:${avatarColor};flex-shrink:0;
+                           border:1px solid rgba(0,0,0,.06);
+                         cursor:pointer;
+                      transition:opacity .15s;">
+                ${iniciales}
+             </div>
                     <div>
                         <div style="font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;">
                             ${p.nombre}${nuevoBadge}
