@@ -4485,6 +4485,11 @@ window._buildTicketCommands = function(cita) {
 
     // Nombre en mayúsculas, truncado a 26 chars para negrita doble
     const nomPac = (cita.nombrePaciente || 'PACIENTE').toUpperCase();
+    // El turno solo se revela cuando la cita ya está confirmada o atendida
+    const mostrarTurno = cita.estado === 'confirmada' || cita.estado === 'atendida';
+    // Récord del paciente en ESTE centro específico
+    // El récord se muestra siempre que exista, sin importar el estado de la cita
+    const record = (window._ticketState?.citaActual?.id === cita.id ? window._ticketState.recordCentro : cita.numeroRecord) || '';
 
     return [
         // ── Encabezado ────────────────────────────────────────
@@ -4496,12 +4501,14 @@ window._buildTicketCommands = function(cita) {
         { type: 'raw', format: 'plain', data: 'Sistema de Citas Medicas' + LF },
         { type: 'raw', format: 'plain', data: _SEP2 + LF },
 
-        // ── Turno destacado ───────────────────────────────────
-        { type: 'raw', format: 'plain', data: 'TURNO' + LF },
-        { type: 'raw', format: 'plain', data: e.BOLD_ON + e.SIZE_DOUBLE },
-        { type: 'raw', format: 'plain', data: '#' + (cita.numeroOrden || '?') + LF },
-        { type: 'raw', format: 'plain', data: e.SIZE_NORMAL + e.BOLD_OFF },
-        { type: 'raw', format: 'plain', data: _SEP2 + LF },
+        // ── Turno destacado (solo si confirmada/atendida) ──────
+        ...(mostrarTurno ? [
+            { type: 'raw', format: 'plain', data: 'TURNO' + LF },
+            { type: 'raw', format: 'plain', data: e.BOLD_ON + e.SIZE_DOUBLE },
+            { type: 'raw', format: 'plain', data: '#' + (cita.numeroOrden || '?') + LF },
+            { type: 'raw', format: 'plain', data: e.SIZE_NORMAL + e.BOLD_OFF },
+            { type: 'raw', format: 'plain', data: _SEP2 + LF },
+        ] : []),
 
         // ── Datos del paciente ────────────────────────────────
         { type: 'raw', format: 'plain', data: e.ALIGN_LEFT },
@@ -4509,6 +4516,9 @@ window._buildTicketCommands = function(cita) {
         { type: 'raw', format: 'plain', data: 'PACIENTE:' + LF },
         { type: 'raw', format: 'plain', data: _trunc(nomPac, 32) + LF },
         { type: 'raw', format: 'plain', data: e.BOLD_OFF },
+        ...(record ? [
+            { type: 'raw', format: 'plain', data: 'Record:  ' + _trunc(record, 23) + LF },
+        ] : []),
         { type: 'raw', format: 'plain', data: _SEP + LF },
 
         // ── Datos de la cita ──────────────────────────────────
@@ -4601,6 +4611,13 @@ window._imprimirAndroid = function(cita, statusEl) {
     const LF  = e.LF;
     const tanda = (cita.tanda || '').includes('vespert') ? 'Vespertina 2:00PM' : 'Matutina 8:00AM';
     const nomPac = (cita.nombrePaciente || 'PACIENTE').toUpperCase();
+    // El turno solo se revela cuando la cita ya está confirmada o atendida
+    const mostrarTurno = cita.estado === 'confirmada' || cita.estado === 'atendida';
+    // Récord del paciente en ESTE centro específico (ya resuelto por el
+    // modal de ticket antes de imprimir; si no coincide con la cita actual
+    // se usa el respaldo guardado en la propia cita al agendarla).
+    // El récord se muestra siempre que exista, sin importar el estado de la cita
+    const record = (window._ticketState?.citaActual?.id === cita.id ? window._ticketState.recordCentro : cita.numeroRecord) || '';
 
     const rawText = [
         e.INIT,
@@ -4608,12 +4625,15 @@ window._imprimirAndroid = function(cita, statusEl) {
         e.SIZE_NORMAL, e.BOLD_OFF,
         'Sistema de Citas Medicas' + LF,
         _SEP2 + LF,
-        'TURNO' + LF,
-        e.BOLD_ON, e.SIZE_DOUBLE, '#' + (cita.numeroOrden || '?') + LF,
-        e.SIZE_NORMAL, e.BOLD_OFF,
-        _SEP2 + LF,
+        ...(mostrarTurno ? [
+            'TURNO' + LF,
+            e.BOLD_ON, e.SIZE_DOUBLE, '#' + (cita.numeroOrden || '?') + LF,
+            e.SIZE_NORMAL, e.BOLD_OFF,
+            _SEP2 + LF,
+        ] : []),
         e.ALIGN_LEFT,
         e.BOLD_ON, 'PACIENTE:' + LF, _trunc(nomPac, 32) + LF, e.BOLD_OFF,
+        ...(record ? [ 'Record:  ' + _trunc(record, 23) + LF ] : []),
         _SEP + LF,
         'Medico:  ' + _trunc(cita.nombreMedico || '—', 23) + LF,
         'Espec.:  ' + _trunc(cita.especialidadMedico || '—', 23) + LF,
@@ -4656,6 +4676,11 @@ window._imprimirFallback = function(cita) {
     // Solo como último recurso — nunca como método principal
     const url = cita.urlConfirmacion || '#';
     const tanda = (cita.tanda || '').includes('vespert') ? 'Vespertina · 2:00 PM' : 'Matutina · 8:00 AM';
+    // El turno solo se revela cuando la cita ya está confirmada o atendida
+    const mostrarTurno = cita.estado === 'confirmada' || cita.estado === 'atendida';
+    // Récord del paciente en ESTE centro específico
+    // El récord se muestra siempre que exista, sin importar el estado de la cita
+    const record = (window._ticketState?.citaActual?.id === cita.id ? window._ticketState.recordCentro : cita.numeroRecord) || '';
     const win = window.open('', '_blank', 'width=320,height=600');
     if (!win) return;
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -4669,11 +4694,12 @@ window._imprimirFallback = function(cita) {
 <div class="c b" style="font-size:13px">AppMedicaRD</div>
 <div class="c" style="font-size:9px">Sistema de Citas Medicas</div>
 <div class="sep"></div>
-<div class="c">TURNO</div>
+${mostrarTurno ? `<div class="c">TURNO</div>
 <div class="c big">#${cita.numeroOrden || '?'}</div>
-<div class="sep"></div>
+<div class="sep"></div>` : ''}
 <div><b>Paciente:</b></div>
 <div class="b">${(cita.nombrePaciente||'').toUpperCase()}</div>
+${record ? `<div>Récord (este centro): ${record}</div>` : ''}
 <div class="sep"></div>
 <div>Médico: ${cita.nombreMedico||'—'}</div>
 <div>Especialidad: ${cita.especialidadMedico||'—'}</div>
@@ -6013,19 +6039,12 @@ function renderListaPacientesSolo() {
                       onmouseout="this.style.background='${trBg}'">
             <td style="padding:10px 12px;white-space:nowrap;">
                 <div style="display:flex;align-items:center;gap:10px;">
-           <div 
-                     onclick="abrirFichaPaciente('${p.uid}')"
-                           onmouseover="this.style.opacity='.75'" 
-                    onmouseout="this.style.opacity='1'"
-                     title="Ver ficha del paciente"
-                    style="width:34px;height:34px;border-radius:10px;background:${avatarBg};
-                             display:flex;align-items:center;justify-content:center;
-                              font-size:13px;font-weight:800;color:${avatarColor};flex-shrink:0;
-                           border:1px solid rgba(0,0,0,.06);
-                         cursor:pointer;
-                      transition:opacity .15s;">
-                ${iniciales}
-             </div>
+                    <div style="width:34px;height:34px;border-radius:10px;background:${avatarBg};
+                                display:flex;align-items:center;justify-content:center;
+                                font-size:13px;font-weight:800;color:${avatarColor};flex-shrink:0;
+                                border:1px solid rgba(0,0,0,.06);">
+                        ${iniciales}
+                    </div>
                     <div>
                         <div style="font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;">
                             ${p.nombre}${nuevoBadge}
@@ -9009,6 +9028,41 @@ function filtrarMedicosEnModal(pacienteId) {
     }).join('') || '<div style="grid-column: 1/3; text-align: center; padding: 20px; color: #64748b;">No se encontraron médicos.</div>';
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  HELPERS DEL REPORTE FINANCIERO
+//  Usados tanto por la tabla "Desglose de Pacientes" en pantalla como por
+//  la exportación a Excel, para que ambos muestren siempre los mismos datos.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Nombre del centro médico al que pertenece la cita (mismo criterio usado en todo el sistema) */
+function _kdCentroDeCitaReporte(c) {
+    const med    = appState.users.find(u => (u.uid || u.id) === c.medicoId);
+    const centro = appState.centrosMedicos?.find(x => x.id === med?.centroMedicoId);
+    return centro?.nombre || c.nombreCentro || '—';
+}
+
+/** Teléfono del paciente: usa el guardado en la cita y, si falta, lo busca en su ficha de usuario */
+function _kdTelefonoPacienteReporte(c) {
+    if (c.telefonoPaciente) return c.telefonoPaciente;
+    const pac = appState.users.find(u => (u.uid || u.id) === c.pacienteId);
+    return pac?.telefono || '—';
+}
+
+/** Fecha de la cita en formato DD/MM/AAAA, sin depender de otros módulos */
+function _kdFechaCitaLegible(fechaStr) {
+    if (!fechaStr) return '—';
+    const partes = fechaStr.split('-');
+    if (partes.length !== 3) return fechaStr;
+    const [y, m, d] = partes;
+    return `${d}/${m}/${y}`;
+}
+
+/** Etiqueta de estado en español para mostrar/exportar */
+function _kdEstadoLabelReporte(estado) {
+    const map = { pendiente: 'PENDIENTE', confirmada: 'CONFIRMADA', atendida: 'ATENDIDA', cancelada: 'CANCELADA' };
+    return map[estado] || (estado || '—').toUpperCase();
+}
+
 async function renderReporteFinanciero() {
     appState.currentView = 'reporte-financiero';
     const mainContent = document.getElementById('mainContent');
@@ -9066,12 +9120,20 @@ async function renderReporteFinanciero() {
     mainContent.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 4px;">
             <h1 class="page-title" style="margin: 0;">Reporte Financiero</h1>
-            <button onclick="imprimirReporteFinanciero()"
-                style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:linear-gradient(135deg,#0f172a,#1e3a52);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(15,23,42,.35);transition:opacity .2s,transform .15s;"
-                onmouseover="this.style.opacity='.88';this.style.transform='translateY(-1px)'"
-                onmouseout="this.style.opacity='1';this.style.transform='none'">
-                🖨️ Generar e Imprimir Reporte
-            </button>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button onclick="imprimirReporteFinanciero()"
+                    style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:linear-gradient(135deg,#0f172a,#1e3a52);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(15,23,42,.35);transition:opacity .2s,transform .15s;"
+                    onmouseover="this.style.opacity='.88';this.style.transform='translateY(-1px)'"
+                    onmouseout="this.style.opacity='1';this.style.transform='none'">
+                    🖨️ Generar e Imprimir Reporte
+                </button>
+                <button id="btnReporteExcel" onclick="generarReporteExcelFinanciero(event)"
+                    style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:linear-gradient(135deg,#166534,#15803d);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(21,128,61,.35);transition:opacity .2s,transform .15s;"
+                    onmouseover="this.style.opacity='.88';this.style.transform='translateY(-1px)'"
+                    onmouseout="this.style.opacity='1';this.style.transform='none'">
+                    🖨️ Reporte Excel
+                </button>
+            </div>
         </div>
 
         <div class="card" style="margin-bottom: 20px;">
@@ -9137,12 +9199,15 @@ async function renderReporteFinanciero() {
                 <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                     <thead>
                         <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                            <th style="padding: 10px 12px; text-align: left;">CENTRO</th>
                             <th style="padding: 10px 12px; text-align: left;">PACIENTE</th>
+                            <th style="padding: 10px 12px; text-align: left;">TELÉFONO</th>
                             <th style="padding: 10px 12px; text-align: left;">RECORD</th>
                             <th style="padding: 10px 12px; text-align: left;">ESTADO</th>
                             <th style="padding: 10px 12px; text-align: left;">ESPECIALIDAD</th>
                             <th style="padding: 10px 12px; text-align: left;">MÉDICO</th>
                             <th style="padding: 10px 12px; text-align: left;">MOTIVO</th>
+                            <th style="padding: 10px 12px; text-align: center;">FECHA</th>
                             <th style="padding: 10px 12px; text-align: center;">TANDA</th>
                             ${user.rol !== 'medico' ? `
                             <th style="padding: 10px 12px; text-align: right; color: #ef4444;">DESC. SEGURO</th>
@@ -9152,17 +9217,22 @@ async function renderReporteFinanciero() {
                     </thead>
                     <tbody>
                         ${filtradas.length === 0 ?
-                            `<tr><td colspan="${user.rol !== 'medico' ? 10 : 8}" style="padding: 24px; text-align: center; color: #64748b;">No hay registros en este rango de fechas.</td></tr>` : ''}
+                            `<tr><td colspan="${user.rol !== 'medico' ? 13 : 11}" style="padding: 24px; text-align: center; color: #64748b;">No hay registros en este rango de fechas.</td></tr>` : ''}
                         ${filtradas.map(c => {
                             const estadoColor = c.estado === 'atendida' ? '#16a34a' : c.estado === 'confirmada' ? '#2563eb' : c.estado === 'cancelada' ? '#dc2626' : '#d97706';
                             const estadoBg   = c.estado === 'atendida' ? '#f0fdf4' : c.estado === 'confirmada' ? '#eff6ff' : c.estado === 'cancelada' ? '#fef2f2' : '#fffbeb';
                             const tandaLabel = c.tanda === 'vespertina' ? '🌆 Vespertina' : c.tanda === 'matutina' ? '🌅 Matutina' : (c.tanda || '—');
                             const record     = (c.numeroRecord && c.numeroRecord.trim() !== '') ? c.numeroRecord : 'Sin record';
+                            const centroCita = _kdCentroDeCitaReporte(c);
+                            const telefonoCita = _kdTelefonoPacienteReporte(c);
+                            const fechaCita  = _kdFechaCitaLegible(c.fechaStr);
                             const descSeguro = Number(c.descuentoSeguro) || 0;
                             const descManual = Number(c.descuentoManual) || 0;
                             return `
                                 <tr style="border-bottom: 1px solid #f1f5f9; ${c.estado === 'cancelada' ? 'opacity: 0.6;' : ''}">
+                                    <td style="padding: 10px 12px; color: #475569;">${centroCita}</td>
                                     <td style="padding: 10px 12px; font-weight: 600;">${c.nombrePaciente || '—'}</td>
+                                    <td style="padding: 10px 12px; color: #475569; font-size: 12px;">${telefonoCita}</td>
                                     <td style="padding: 10px 12px; color: #475569; font-size: 12px;">${record}</td>
                                     <td style="padding: 10px 12px;">
                                         <span style="display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:700;background:${estadoBg};color:${estadoColor};border:1px solid ${estadoColor}30;">
@@ -9172,6 +9242,7 @@ async function renderReporteFinanciero() {
                                     <td style="padding: 10px 12px; color: #475569;">${c.especialidadMedico || '—'}</td>
                                     <td style="padding: 10px 12px; color: #1e293b; font-weight: 500;">${c.nombreMedico || '—'}</td>
                                     <td style="padding: 10px 12px; color: #475569; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.tipoCitaLabel || c.tipoCita || '—'}">${c.tipoCitaLabel || c.tipoCita || '—'}</td>
+                                    <td style="padding: 10px 12px; text-align: center; font-size: 12px;">${fechaCita}</td>
                                     <td style="padding: 10px 12px; text-align: center; font-size: 12px;">${tandaLabel}</td>
                                     ${user.rol !== 'medico' ? `
                                     <td style="padding: 10px 12px; text-align: right; color: #ef4444; font-size: 12px;">${descSeguro > 0 ? `-RD$ ${descSeguro.toLocaleString()}` : '—'}</td>
@@ -9435,6 +9506,100 @@ function imprimirReporteFinanciero() {
     ventana.document.write(html);
     ventana.document.close();
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  EXPORTAR REPORTE FINANCIERO A EXCEL (.xlsx)
+//  Usa EXACTAMENTE los mismos filtros activos del Reporte Financiero
+//  (fechaFinanzasInicio, fechaFinanzasFin, filtroMedicoReporte) para que el
+//  archivo descargado coincida siempre con lo que se ve en pantalla.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Carga la librería SheetJS (generador de .xlsx) solo una vez y bajo demanda */
+window._kdCargarSheetJS = function() {
+    if (window.XLSX) return Promise.resolve();
+    if (window._kdSheetJSPromise) return window._kdSheetJSPromise;
+    window._kdSheetJSPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        script.onload = () => resolve();
+        script.onerror = () => {
+            window._kdSheetJSPromise = null; // permite reintentar si falló por conexión
+            reject(new Error('No se pudo cargar la librería de Excel. Verifica tu conexión a internet.'));
+        };
+        document.head.appendChild(script);
+    });
+    return window._kdSheetJSPromise;
+};
+
+window.generarReporteExcelFinanciero = async function(evt) {
+    const btn = evt?.currentTarget || document.getElementById('btnReporteExcel');
+    const textoOriginal = btn ? btn.innerHTML : null;
+
+    try {
+        if (btn) { btn.disabled = true; btn.style.opacity = '.7'; btn.innerHTML = '⏳ Generando...'; }
+
+        await window._kdCargarSheetJS();
+
+        const user = appState.currentUserData;
+
+        // ── Determinar médicos visibles según rol (mismo criterio que el resto del módulo) ──
+        let misMedicosIds = [];
+        if (user.rol === 'medico') {
+            misMedicosIds = [user.uid || user.id];
+        } else {
+            misMedicosIds = Array.isArray(user.medicoAsignadoId) ? user.medicoAsignadoId : [user.medicoAsignadoId];
+        }
+
+        // ── Mismos filtros que "Desglose de Pacientes" ─────────────────────────
+        const filtradas = appState.citas.filter(c => {
+            const fechaCita = c.fechaStr;
+            const cumpleFecha = fechaCita >= appState.fechaFinanzasInicio && fechaCita <= appState.fechaFinanzasFin;
+            const cumpleMedico = appState.filtroMedicoReporte === 'TODAS'
+                ? misMedicosIds.includes(c.medicoId)
+                : c.medicoId === appState.filtroMedicoReporte;
+            return cumpleFecha && cumpleMedico;
+        }).sort((a, b) => (a.fechaStr || '').localeCompare(b.fechaStr || ''));
+
+        if (filtradas.length === 0) {
+            alert('No hay citas en el rango de fechas / médico seleccionado para exportar.');
+            return;
+        }
+
+        // ── Construir filas con exactamente las columnas solicitadas ───────────
+        const filas = filtradas.map(c => ({
+            'CENTRO':              _kdCentroDeCitaReporte(c),
+            'NUMERO DE RECORD':    (c.numeroRecord && c.numeroRecord.trim() !== '') ? c.numeroRecord : 'Sin record',
+            'NOMBRE DEL PACIENTE': c.nombrePaciente || '—',
+            'TELEFONO':            _kdTelefonoPacienteReporte(c),
+            'FECHA DE CITA':       _kdFechaCitaLegible(c.fechaStr),
+            'ESPECIALIDAD':        c.especialidadMedico || '—',
+            'ESTADO':              _kdEstadoLabelReporte(c.estado),
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(filas);
+        ws['!cols'] = [
+            { wch: 26 }, // CENTRO
+            { wch: 18 }, // NUMERO DE RECORD
+            { wch: 30 }, // NOMBRE DEL PACIENTE
+            { wch: 15 }, // TELEFONO
+            { wch: 14 }, // FECHA DE CITA
+            { wch: 24 }, // ESPECIALIDAD
+            { wch: 14 }, // ESTADO
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Reporte de Citas');
+
+        const nombreArchivo = `Reporte_Citas_${appState.fechaFinanzasInicio}_a_${appState.fechaFinanzasFin}.xlsx`;
+        XLSX.writeFile(wb, nombreArchivo);
+
+    } catch (e) {
+        console.error('[ReporteExcel]', e);
+        alert('❌ No se pudo generar el reporte Excel: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = textoOriginal; }
+    }
+};
 
 
 
@@ -26285,5 +26450,3 @@ window._imprimirEmergencia = async function(id) {
     </body></html>`);
     win.document.close();
 };
-
-
