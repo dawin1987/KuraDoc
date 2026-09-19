@@ -66,6 +66,17 @@ function _kdDatosPaciente(cita) {
     };
 }
 
+/**
+ * Determina si el número de turno debe mostrarse/imprimirse.
+ * Regla de negocio: el turno solo se revela cuando la cita ya fue
+ * CONFIRMADA (llegó y se le asignó puesto en fila) o ATENDIDA.
+ * Mientras esté PENDIENTE o CANCELADA, el turno permanece oculto,
+ * porque aún no tiene (o ya no tiene) un puesto real en la fila.
+ */
+window._kdTurnoVisible = function(cita) {
+    return cita?.estado === 'confirmada' || cita?.estado === 'atendida';
+};
+
 /** Obtiene datos del médico / centro */
 function _kdDatosMedico(cita) {
     const med    = _kdGetUser(cita.medicoId);
@@ -83,6 +94,34 @@ function _kdDatosMedico(cita) {
         redes      : centro?.redesSociales    || med?.redesSociales || '',
     };
 }
+
+/** Resuelve el ID del centro médico al que pertenece la cita (mismo criterio que _kdDatosMedico) */
+function _kdCentroIdDeCita(cita) {
+    const med = _kdGetUser(cita.medicoId);
+    return med?.centroMedicoId || cita.centroId || null;
+}
+
+/**
+ * Obtiene el número de récord del PACIENTE en el CENTRO específico de esta
+ * cita (no el récord de otro centro que el paciente pudiera tener de otras
+ * visitas). Hace una consulta en vivo con getRecordPorCentro() para reflejar
+ * el dato más reciente; si falla o no hay conexión, cae de respaldo al
+ * numeroRecord que haya quedado guardado en la propia cita al agendarla.
+ * A diferencia del turno, el récord se muestra SIEMPRE que exista,
+ * sin importar el estado de la cita (pendiente, confirmada, atendida o cancelada).
+ */
+window._kdObtenerRecordCentro = async function(cita) {
+    try {
+        const centroId = _kdCentroIdDeCita(cita);
+        if (!cita.pacienteId || !centroId) return cita.numeroRecord || '';
+        if (typeof window.getRecordPorCentro !== 'function') return cita.numeroRecord || '';
+        const record = await window.getRecordPorCentro(cita.pacienteId, centroId);
+        return record?.numeroRecord || cita.numeroRecord || '';
+    } catch(e) {
+        console.warn('[KDPrint] No se pudo obtener el récord del centro, usando respaldo:', e.message);
+        return cita.numeroRecord || '';
+    }
+};
 
 // ══════════════════════════════════════════════════════════════════
 // §2  DETECCIÓN DE IMPRESORA TÉRMICA
@@ -121,14 +160,19 @@ window._kdPrint.detectarTerMica = async function() {
 // §3  GENERADOR HTML — PLANTILLA TÉRMICA 80MM
 // ══════════════════════════════════════════════════════════════════
 
-window.generarHTMLTicket80mm = function(cita) {
+window.generarHTMLTicket80mm = function(cita, recordCentro) {
     const pac    = _kdDatosPaciente(cita);
     const med    = _kdDatosMedico(cita);
     const tanda  = _kdTanda(cita.tanda);
     const fecha  = _kdFechaBonita(cita.fechaStr, false);
     const token  = cita.tokenConfirmacion || cita.id || '—';
     const urlQR  = cita.urlConfirmacion   || '';
-    const turno  = cita.ordenAtencion     || cita.numeroOrden || '?';
+    const mostrarTurno = window._kdTurnoVisible(cita);
+    const turno  = mostrarTurno ? (cita.ordenAtencion || cita.numeroOrden || '?') : null;
+    // El récord se muestra siempre que exista, sin importar el estado de la cita
+    const record = recordCentro !== undefined
+        ? recordCentro
+        : ((window._ticketState?.citaActual?.id === cita.id) ? window._ticketState.recordCentro : cita.numeroRecord) || '';
     const seguro = cita.seguroMedicoPaciente || '';
 
     // Aviso de seguridad para credenciales
@@ -139,7 +183,7 @@ window.generarHTMLTicket80mm = function(cita) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ticket KuraDoc · Turno #${turno}</title>
+<title>Ticket KuraDoc${mostrarTurno ? ' · Turno #' + turno : ''}</title>
 <style>
 /* ── Reset ── */
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -324,17 +368,19 @@ body{
     ${med.centro !== '—' ? `<div style="font-size:9px;color:#334155;margin-top:1mm;text-align:center;">${med.centro}</div>` : ''}
   </div>
 
-  <!-- ── TURNO ── -->
+  <!-- ── TURNO (solo si la cita está confirmada o atendida) ── -->
+  ${mostrarTurno ? `
   <div class="turno-box">
     <div class="turno-label">Turno</div>
     <div class="turno-num">#${turno}</div>
-  </div>
+  </div>` : ''}
 
   <!-- ── PACIENTE ── -->
   <div class="sec">
     <div class="sec-label">Paciente</div>
     <div class="sec-val">${(pac.nombre || '—').toUpperCase()}</div>
     ${pac.telefono !== '—' ? `<div class="sec-val-sm">${pac.telefono}</div>` : ''}
+    ${record ? `<div class="sec-val-sm" style="font-size:9px;color:#475569;">🗂 Récord: ${record}</div>` : ''}
     ${pac.email    !== '—' ? `<div class="sec-val-sm" style="font-size:9px;color:#475569;">✉ ${pac.email}</div>` : ''}
   </div>
   <hr class="sep">
@@ -424,14 +470,19 @@ body{
 // §4  GENERADOR HTML — PLANTILLA HOJA CARTA
 // ══════════════════════════════════════════════════════════════════
 
-window.generarHTMLTicketCarta = function(cita) {
+window.generarHTMLTicketCarta = function(cita, recordCentro) {
     const pac    = _kdDatosPaciente(cita);
     const med    = _kdDatosMedico(cita);
     const tanda  = _kdTanda(cita.tanda);
     const fecha  = _kdFechaBonita(cita.fechaStr, true);
     const token  = cita.tokenConfirmacion || cita.id   || '—';
     const urlQR  = cita.urlConfirmacion   || '';
-    const turno  = cita.ordenAtencion     || cita.numeroOrden || '?';
+    const mostrarTurno = window._kdTurnoVisible(cita);
+    const turno  = mostrarTurno ? (cita.ordenAtencion || cita.numeroOrden || '?') : null;
+    // El récord se muestra siempre que exista, sin importar el estado de la cita
+    const record = recordCentro !== undefined
+        ? recordCentro
+        : ((window._ticketState?.citaActual?.id === cita.id) ? window._ticketState.recordCentro : cita.numeroRecord) || '';
     const seguro = cita.seguroMedicoPaciente || '';
     const ahora  = new Date().toLocaleDateString('es-DO', {
         day:'2-digit', month:'long', year:'numeric',
@@ -674,14 +725,15 @@ body{
     </div>
   </div>
 
-  <!-- ══ TURNO ══ -->
+  <!-- ══ TURNO (solo si la cita está confirmada o atendida) ══ -->
+  ${mostrarTurno ? `
   <div class="turno-band">
     <div class="turno-num">#${turno}</div>
     <div class="turno-info">
       <div class="turno-label">Número de turno</div>
       <div class="turno-desc">Su orden de atención para este día</div>
     </div>
-  </div>
+  </div>` : ''}
 
   <!-- ══ CUERPO ══ -->
   <div class="body">
@@ -699,6 +751,11 @@ body{
         <div class="field">
           <div class="field-label">Teléfono</div>
           <div class="field-val-sm">📞 ${pac.telefono}</div>
+        </div>` : ''}
+        ${record ? `
+        <div class="field">
+          <div class="field-label">No. de récord (este centro)</div>
+          <div class="field-val-sm">🗂 ${record}</div>
         </div>` : ''}
         ${pac.email !== '—' ? `
         <div class="field">
@@ -849,7 +906,7 @@ body{
   <div class="footer">
     <div class="footer-brand">KuraDoc · Sistema de Citas Médicas</div>
     <div class="footer-sub">Tecnología al servicio de su salud</div>
-    <div class="footer-gen">Documento generado el ${ahora} · Turno #${turno}</div>
+    <div class="footer-gen">Documento generado el ${ahora}${mostrarTurno ? ' · Turno #' + turno : ''}</div>
   </div>
 
 </div><!-- /carta -->
@@ -995,7 +1052,12 @@ window.abrirModalTicketCita = async function(citaOrId) {
     const fechaBonita = _kdFechaBonita(cita.fechaStr, true);
     const urlQR      = cita.urlConfirmacion || '';
     const esAndroid  = window._esAndroid && window._esAndroid();
-    const turno      = cita.ordenAtencion || cita.numeroOrden || '?';
+    const mostrarTurno = window._kdTurnoVisible(cita);
+    const turno      = mostrarTurno ? (cita.ordenAtencion || cita.numeroOrden || '?') : null;
+    // Récord del paciente EN EL CENTRO de esta cita (no el de otro centro
+    // donde el mismo paciente pudiera tener un récord distinto).
+    const record     = await window._kdObtenerRecordCentro(cita);
+    window._ticketState.recordCentro = record;
     const pac        = _kdDatosPaciente(cita);
     const med        = _kdDatosMedico(cita);
 
@@ -1060,9 +1122,13 @@ window.abrirModalTicketCita = async function(citaOrId) {
                     : `<div style="font-weight:900;font-size:14px;color:#0f172a;">KuraDoc</div>`}
               </div>
               <div style="text-align:center;font-size:9px;color:#64748b;margin-bottom:6px;">Sistema de Citas Médicas</div>
+              ${mostrarTurno ? `
               <div style="border-top:2px dashed #cbd5e1;margin:5px 0;"></div>
               <div style="text-align:center;font-size:9px;color:#64748b;">TURNO</div>
-              <div style="text-align:center;font-size:26px;font-weight:900;color:#0f172a;line-height:1.1;margin:1px 0 5px;">#${turno}</div>
+              <div style="text-align:center;font-size:26px;font-weight:900;color:#0f172a;line-height:1.1;margin:1px 0 5px;">#${turno}</div>` : `
+              <div style="border-top:2px dashed #cbd5e1;margin:5px 0;"></div>
+              <div style="text-align:center;font-size:9px;color:#94a3b8;">TURNO</div>
+              <div style="text-align:center;font-size:11px;font-weight:700;color:#94a3b8;line-height:1.3;margin:1px 0 5px;">Se asigna al confirmar</div>`}
               <div style="border-top:2px dashed #cbd5e1;margin:5px 0;"></div>
               <div style="font-size:8px;color:#64748b;font-weight:750;">PACIENTE</div>
               <div style="font-weight:700;font-size:11px;color:#0f172a;word-break:break-word;margin-bottom:5px;">
@@ -1072,6 +1138,11 @@ window.abrirModalTicketCita = async function(citaOrId) {
               <div style="font-weight:700;font-size:11px;color:#0f172a;word-break:break-word;margin-bottom:5px;">
                 ${(cita.telefonoPaciente || '—')}
               </div>
+              ${record ? `
+              <div style="font-size:8px;color:#64748b;font-weight:750;">RÉCORD (este centro):</div>
+              <div style="font-weight:700;font-size:11px;color:#0f172a;word-break:break-word;margin-bottom:5px;">
+                🗂 ${record}
+              </div>` : ''}
               <div style="border-top:1px dashed #e2e8f0;margin:3px 0;"></div>
               <div style="font-size:10px;color:#475569;margin:1px 0;"><strong>👨‍⚕️ </strong> ${med.nombre}</div>
               <div style="font-size:10px;color:#475569;margin:1px 0;"><strong>🩺 Especialidad:</strong> ${med.especialidad}</div>
