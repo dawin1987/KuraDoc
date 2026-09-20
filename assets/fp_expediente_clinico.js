@@ -809,3 +809,87 @@ window._fpAbrirHistoria = function(pacienteId, menuDoc) {
         _orig(view);
     };
 })();
+
+// ═══════════════════════════════════════════════════════════════
+//  RESPONSIVE MOBILE — "📄 Documentos Clínicos Especializados"
+//  ───────────────────────────────────────────────────────────
+//  En PC/tablet el modal #modalDocumentos no cambia en nada: menú
+//  de especialidades a la izquierda + documento a la derecha,
+//  ambos visibles al mismo tiempo (tal como funciona hoy).
+//
+//  En smartphone (≤640px) eso no cabe: el menú fijo de 280px deja
+//  casi sin espacio al documento. Aquí lo convertimos en un patrón
+//  "lista → detalle": el panel derecho (#doc-panel-detalle) se
+//  desliza a pantalla completa al tocar una especialidad, con un
+//  botón "← Volver" para regresar al menú.
+//
+//  Esto se logra ENVOLVIENDO las funciones que ya existen en
+//  app.logic.js (activarMenuDoc, abrirModalDocumentos,
+//  cerrarModalDocumentos) sin modificar ni una línea de ese
+//  archivo — los 7 formularios (Historia Universal, Gineco,
+//  Pediátrica, Nutricional, Analíticas, Estudios, Recetas) siguen
+//  funcionando exactamente igual, solo cambia el contenedor visual.
+// ═══════════════════════════════════════════════════════════════
+
+const _DOC_MOBILE_BREAKPOINT = 640;
+
+const _DOC_TITULOS_MODULO = {
+    universal:  '🩺 Historia Universal',
+    gineco:     '🌸 Gineco-Obstétrica',
+    pediatrico: '🧸 Pediátrica',
+    nutri:      '🍎 Nutricional',
+    analitico:  '🧪 Analíticas',
+    estudios:   '🔬 Estudios',
+    receta:     '💊 Recetas',
+};
+
+function _docEsMobile() {
+    return window.innerWidth <= _DOC_MOBILE_BREAKPOINT;
+}
+
+// Botón "← Volver": regresa del documento a la lista de especialidades
+window._docVolverMenuMobile = function() {
+    const panel = document.getElementById('doc-panel-detalle');
+    if (panel) panel.classList.remove('doc-detail-open');
+};
+
+// Envolver activarMenuDoc: además de resaltar el botón del menú
+// (comportamiento original intacto), en mobile desliza el panel
+// de detalle a pantalla completa y le pone su título.
+(function _patchActivarMenuDoc() {
+    const _orig = window.activarMenuDoc;
+    if (typeof _orig !== 'function') return;
+    window.activarMenuDoc = function(modulo) {
+        _orig(modulo);
+        if (_docEsMobile()) {
+            const panel  = document.getElementById('doc-panel-detalle');
+            const titulo = document.getElementById('doc-mobile-title');
+            if (titulo) titulo.textContent = _DOC_TITULOS_MODULO[modulo] || 'Documento';
+            if (panel)  panel.classList.add('doc-detail-open');
+        }
+    };
+})();
+
+// Envolver abrirModalDocumentos: siempre debe arrancar mostrando
+// el menú (lista) en mobile, nunca abrir ya en modo detalle.
+(function _patchAbrirModalDocumentos() {
+    const _orig = window.abrirModalDocumentos;
+    if (typeof _orig !== 'function') return;
+    window.abrirModalDocumentos = function(pacienteId) {
+        _orig(pacienteId);
+        const panel = document.getElementById('doc-panel-detalle');
+        if (panel) panel.classList.remove('doc-detail-open');
+    };
+})();
+
+// Envolver cerrarModalDocumentos: limpiar el estado mobile al cerrar,
+// para que la próxima vez vuelva a abrir mostrando la lista.
+(function _patchCerrarModalDocumentos() {
+    const _orig = window.cerrarModalDocumentos;
+    if (typeof _orig !== 'function') return;
+    window.cerrarModalDocumentos = function() {
+        _orig();
+        const panel = document.getElementById('doc-panel-detalle');
+        if (panel) panel.classList.remove('doc-detail-open');
+    };
+})();
