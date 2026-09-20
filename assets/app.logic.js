@@ -3,7 +3,7 @@
    © 2026 KuraDoc. Todos los derechos reservados.
 ═══════════════════════════════════════════════════════ */
 
-        // 🔥 CONFIGURACIÓN DE FIREBASE - REEMPLAZA CON TUS VALORES
+        // 🔥 CONFIGURACIÓN DE FIREBASE -
        const firebaseConfig = {
   apiKey: "AIzaSyDaWQpQewwezScho2ocHSPpdkXQfM7FT8k",
   authDomain: "gestion-citas-medicas-2291d.firebaseapp.com",
@@ -6039,12 +6039,19 @@ function renderListaPacientesSolo() {
                       onmouseout="this.style.background='${trBg}'">
             <td style="padding:10px 12px;white-space:nowrap;">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="width:34px;height:34px;border-radius:10px;background:${avatarBg};
-                                display:flex;align-items:center;justify-content:center;
-                                font-size:13px;font-weight:800;color:${avatarColor};flex-shrink:0;
-                                border:1px solid rgba(0,0,0,.06);">
-                        ${iniciales}
-                    </div>
+                    <div 
+    onclick="abrirFichaPaciente('${p.uid}')"
+    onmouseover="this.style.opacity='.75'" 
+    onmouseout="this.style.opacity='1'"
+    title="Ver ficha del paciente"
+    style="width:34px;height:34px;border-radius:10px;background:${avatarBg};
+           display:flex;align-items:center;justify-content:center;
+           font-size:13px;font-weight:800;color:${avatarColor};flex-shrink:0;
+           border:1px solid rgba(0,0,0,.06);
+           cursor:pointer;
+           transition:opacity .15s;">
+    ${iniciales}
+</div>
                     <div>
                         <div style="font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;">
                             ${p.nombre}${nuevoBadge}
@@ -6069,14 +6076,25 @@ function renderListaPacientesSolo() {
                 <div id="record-chip-${p.uid}"></div>
             </td>
             <td style="padding:10px 12px;text-align:center;">
-                <button onclick="abrirFichaPaciente('${p.uid}')"
-                    style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;
-                           border:none;border-radius:7px;padding:5px 14px;font-size:12px;
-                           font-weight:700;cursor:pointer;transition:opacity .15s;white-space:nowrap;"
-                    onmouseover="this.style.opacity='.85'"
-                    onmouseout="this.style.opacity='1'">
-                    Ver →
-                </button>
+                <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                    <button onclick="imprimirExpedientePaciente('${p.uid}')"
+                        title="Imprimir récord del paciente"
+                        style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;
+                               border-radius:7px;padding:5px 9px;font-size:13px;
+                               cursor:pointer;transition:opacity .15s;white-space:nowrap;"
+                        onmouseover="this.style.opacity='.7'"
+                        onmouseout="this.style.opacity='1'">
+                        🖨️
+                    </button>
+                    <button onclick="abrirFichaPaciente('${p.uid}')"
+                        style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;
+                               border:none;border-radius:7px;padding:5px 14px;font-size:12px;
+                               font-weight:700;cursor:pointer;transition:opacity .15s;white-space:nowrap;"
+                        onmouseover="this.style.opacity='.85'"
+                        onmouseout="this.style.opacity='1'">
+                        Ver →
+                    </button>
+                </div>
             </td>
         </tr>`;
     }
@@ -9125,13 +9143,13 @@ async function renderReporteFinanciero() {
                     style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:linear-gradient(135deg,#0f172a,#1e3a52);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(15,23,42,.35);transition:opacity .2s,transform .15s;"
                     onmouseover="this.style.opacity='.88';this.style.transform='translateY(-1px)'"
                     onmouseout="this.style.opacity='1';this.style.transform='none'">
-                    🖨️ Generar e Imprimir Reporte
+                    🖨️ Generar Reporte pdf
                 </button>
                 <button id="btnReporteExcel" onclick="generarReporteExcelFinanciero(event)"
                     style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:linear-gradient(135deg,#166534,#15803d);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(21,128,61,.35);transition:opacity .2s,transform .15s;"
                     onmouseover="this.style.opacity='.88';this.style.transform='translateY(-1px)'"
                     onmouseout="this.style.opacity='1';this.style.transform='none'">
-                    🖨️ Reporte Excel
+                    📥 Descargar reporte Excel
                 </button>
             </div>
         </div>
@@ -9907,11 +9925,42 @@ function actualizarDataDashboard(medicosAutorizados) {
     });
 }
 
+/**
+ * Arma el texto de "Nota de Evolución" a partir de los campos REALES que
+ * guarda guardarNotaMedica() en la colección historias_clinicas
+ * (historia, tratamiento, comentario). El campo "nota" nunca existió ahí,
+ * por eso esta columna siempre salía vacía en el expediente impreso.
+ */
+function _kdComponerNotaEvolucion(n) {
+    if (!n) return 'Sin notas clínicas';
+    const partes = [];
+    if (n.historia && n.historia.trim())       partes.push('Historia: ' + n.historia.trim());
+    if (n.tratamiento && n.tratamiento.trim()) partes.push('Tratamiento: ' + n.tratamiento.trim());
+    if (n.comentario && n.comentario.trim())   partes.push('Obs: ' + n.comentario.trim());
+    return partes.length ? partes.join('\n') : 'Sin notas clínicas';
+}
+
   async function imprimirExpedientePaciente(pacienteId) {
     try {
         // 1. Obtener datos del paciente
         const paciente = _uGet(pacienteId || u.id === pacienteId);
         if (!paciente) return alert("Paciente no encontrado.");
+
+        // 1.b Centro médico de quien está imprimiendo (secretaria/médico logueado)
+        const staffActual   = appState.currentUserData;
+        const centroActual  = appState.centrosMedicos?.find(x => x.id === staffActual?.centroMedicoId);
+        const nombreCentroActual = centroActual?.nombre || 'Centro no especificado';
+
+        // 1.c Número de récord del paciente, SOLO el de este centro (no el de otros centros)
+        let recordCentroActual = '';
+        try {
+            if (staffActual?.centroMedicoId && typeof window.getRecordPorCentro === 'function') {
+                const rec = await window.getRecordPorCentro(pacienteId, staffActual.centroMedicoId);
+                recordCentroActual = rec?.numeroRecord || '';
+            }
+        } catch (e) {
+            console.warn('[Expediente] No se pudo obtener el récord del centro:', e.message);
+        }
 
         // 2. Obtener historial de citas (Para saber estados y motivos)
         const citasSnap = await db.collection('citas').where('pacienteId', '==', pacienteId).get();
@@ -9953,9 +10002,9 @@ function actualizarDataDashboard(medicosAutorizados) {
                 fechaStr: fStr || 'Sin fecha',
                 medicoId: c.medicoId,
                 estado: c.estado || 'Desconocido',
-                motivo: c.motivoCita || c.motivo || notaAsociada?.motivoConsulta || 'Consulta General',
+                motivo: c.motivoCita || c.motivo || notaAsociada?.motivo || 'Consulta General',
                 diagnostico: notaAsociada?.diagnostico || 'Sin diagnóstico registrado',
-                nota: notaAsociada?.nota || 'Sin notas clínicas',
+                nota: _kdComponerNotaEvolucion(notaAsociada),
                 especialidad: especialidadReal 
             });
         });
@@ -9972,9 +10021,9 @@ function actualizarDataDashboard(medicosAutorizados) {
                     fechaStr: _dLocal(d),
                     medicoId: h.medicoId,
                     estado: 'Atendida', // Si hay nota, asumimos atención
-                    motivo: h.motivoConsulta || 'Consulta General',
+                    motivo: h.motivo || 'Consulta General',
                     diagnostico: h.diagnostico || 'Sin diagnóstico registrado',
-                    nota: h.nota || '',
+                    nota: _kdComponerNotaEvolucion(h),
                     especialidad: h.especialidad || 'General'
                 });
             }
@@ -10024,6 +10073,7 @@ function actualizarDataDashboard(medicosAutorizados) {
             <body>
                 <div class="header-title">
                     <h1>EXPEDIENTE CLÍNICO INTEGRAL</h1>
+                    <p style="margin: 6px 0 0 0; color: #1e293b; font-size: 13px; font-weight: 700;">🏥 ${nombreCentroActual}</p>
                     <p style="margin: 5px 0 0 0; color: #64748b; font-size: 12px;">Generado el: ${fechaReporte}</p>
                 </div>
 
@@ -10034,8 +10084,9 @@ function actualizarDataDashboard(medicosAutorizados) {
                     <div><strong>Correo Electrónico</strong><span>${paciente.email || 'No registrado'}</span></div>
                     <div><strong>Edad</strong><span>${edad}</span></div>
                     <div><strong>Género</strong><span>${paciente.genero || 'No registrado'}</span></div>
-                    <div><strong>Seguro Médico</strong><span>${paciente.tieneSeguro ? 'Sí (Activo)' : 'Privado / Ninguno'}</span></div>
+                    <div><strong>Seguro Médico</strong><span>${(paciente.seguroMedico && paciente.seguroMedico !== 'NINGUNO') ? paciente.seguroMedico : 'Ninguno'}</span></div>
                     <div><strong>Dirección</strong><span>${paciente.direccion || 'No registrada'}</span></div>
+                    <div><strong>No. de Récord (${nombreCentroActual})</strong><span>${recordCentroActual || 'No asignado en este centro'}</span></div>
                 </div>
 
                 
