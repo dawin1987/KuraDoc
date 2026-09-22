@@ -7104,6 +7104,10 @@ async function renderMisCitas() {
                         <button class="mc-btn mc-btn-confirmar" onclick="_mcConfirmar('${c.id}')">✅ Confirmar</button>` : `
                         <span class="mc-confirmed-tag">✅ Confirmada</span>`}
                         <button class="mc-btn mc-btn-cancelar" onclick="_mcCancelar('${c.id}')">✕ Cancelar</button>
+    ${medico?.centroMedicoId ? `
+<button class="mc-btn" onclick="kdAbrirChatConCentro('${medico.centroMedicoId}','${(centro?.nombre||'').replace(/'/g,"\\'")}')">
+    💬 Chatear
+</button>` : ''}
                     </div>` : (esPasada && c.estado !== 'cancelada' && c.estado !== 'atendida' ? `
                     <span class="mc-note">Solo secretaria puede modificar</span>` : '')}
                 </div>
@@ -26501,3 +26505,5 @@ window._imprimirEmergencia = async function(id) {
     </body></html>`);
     win.document.close();
 };
+
+
