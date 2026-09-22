@@ -31,7 +31,7 @@ if ("serviceWorker" in navigator) {
     <!-- ═══ SPLASH — pantalla de carga inicial ════════════════ -->
     <div id="app-splash">
         <div class="splash-logo">🏥</div>
-        <div class="splash-title">KuraDoc</div>
+        <div class="splash-title">AppMedicaRD</div>
         <div class="splash-subtitle">Sistema de Gestión Clínica</div>
         <div class="splash-bar-wrap">
             <div class="splash-bar"></div>
@@ -778,6 +778,7 @@ if ("serviceWorker" in navigator) {
     <script src="assets/app.logic.js"></script>
     <script src="assets/kd_facturacion_module.js"></script>
     <script src="assets/fp_expediente_clinico.js"></script>
+    <script src="assets/kd_chat_module.js"></script>
     <script src="assets/kd_cie10_module.js"></script>
     <script src="kd_print_module.js"></script>
 
@@ -790,9 +791,9 @@ if ("serviceWorker" in navigator) {
             <button class="btn-close" onclick="cerrarModalDocumentos()" style="background: none; border: none; font-size: 20px; cursor: pointer;">✖</button>
         </div>
 
-        <div style="display: flex; flex: 1; overflow: hidden;" class="doc-body-layout">
+        <div style="display: flex; flex: 1; overflow: hidden;">
             
-            <div style="width: 280px; background: #f1f5f9; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow-y: auto;" class="doc-sidebar-menu">
+            <div style="width: 280px; background: #f1f5f9; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow-y: auto;">
                 
                 <div id="doc-sidebar-paciente" style="padding: 15px; border-bottom: 1px solid #cbd5e1;">
                     </div>
@@ -832,14 +833,8 @@ if ("serviceWorker" in navigator) {
                  </div>
            </div>
 
-            <div id="doc-panel-detalle" class="doc-panel-detalle" style="flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden;">
-                <div id="doc-mobile-topbar" class="doc-mobile-topbar">
-                    <button type="button" class="doc-mobile-back" onclick="window._docVolverMenuMobile()">← Volver</button>
-                    <span id="doc-mobile-title" class="doc-mobile-title">Documento</span>
+            <div id="doc-main-content" style="flex: 1; padding: 25px; overflow-y: auto; background: white;">
                 </div>
-                <div id="doc-main-content" style="flex: 1; padding: 25px; overflow-y: auto; background: white;">
-                    </div>
-            </div>
         </div>
     </div>
 </div>
