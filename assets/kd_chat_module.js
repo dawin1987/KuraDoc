@@ -224,6 +224,19 @@ function renderInboxChatSecretaria() {
     const mainContent = document.getElementById('mainContent');
     const centroId = appState.currentUserData?.centroMedicoId;
 
+    // Refuerzo de privacidad: aunque alguien llegue a esta vista sin pasar
+    // por el botón del menú (por ejemplo, quedó una navegación pendiente),
+    // el chat con los pacientes solo se muestra a la secretaria.
+    const rol = appState.currentUserData?.rol;
+    if (rol !== 'secretaria') {
+        mainContent.innerHTML = `
+            <div style="text-align:center;padding:60px 20px;color:#64748b;">
+                <div style="font-size:36px;margin-bottom:10px;">🔒</div>
+                <p style="font-weight:600;">Esta sección es exclusiva de la secretaría del centro.</p>
+            </div>`;
+        return;
+    }
+
     if (!centroId) {
         mainContent.innerHTML = `
             <div style="text-align:center;padding:60px 20px;color:#64748b;">
@@ -645,7 +658,11 @@ function _kdActualizarBadgeMenu() {
     window.renderMobileNav = function() {
         _orig();
         const rol = appState.currentUserData?.rol;
-        if (rol !== 'secretaria' && rol !== 'medico' && rol !== 'adminCentro') return;
+        // Solo la secretaria ve/usa el chat — así puede responder con
+        // confianza a los pacientes sin que el médico vea la conversación.
+        // (Si más adelante también quieres incluir a adminCentro, agrega
+        // "|| rol === 'adminCentro'" a la condición de abajo.)
+        if (rol !== 'secretaria') return;
 
         // Arranca (una sola vez por sesión) el listener global de la
         // bandeja de hoy, independientemente de si el usuario ha entrado
