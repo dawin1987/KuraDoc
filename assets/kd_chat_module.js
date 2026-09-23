@@ -891,7 +891,7 @@ function _kdInsertarFabPaciente() {
     if (document.getElementById('kd-chat-fab-paciente')) return;
     document.body.insertAdjacentHTML('beforeend', `
         <button id="kd-chat-fab-paciente" onclick="_kdAbrirPickerChatsPaciente()" title="Mis mensajes"
-            style="position:fixed;bottom:60px;right:20px;width:56px;height:56px;border-radius:50%;
+            style="position:fixed;bottom:87px;right:20px;width:56px;height:56px;border-radius:50%;
                    background:linear-gradient(135deg,#1e3a5f,#2563eb);color:white;border:none;
                    box-shadow:0 6px 20px rgba(37,99,235,.4);font-size:24px;cursor:pointer;z-index:9990;
                    display:none;align-items:center;justify-content:center;">
