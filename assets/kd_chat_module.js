@@ -836,13 +836,29 @@ window.kdAbrirChatConCentro = function(centroId, centroNombre) {
             }).join('') || `<div style="text-align:center;color:#64748b;font-size:12px;margin:auto;background:rgba(255,255,255,.7);padding:8px 14px;border-radius:8px;">
                 Escribe tu primer mensaje a la secretaría del centro.</div>`;
             cont.scrollTop = cont.scrollHeight;
+
+            // Igual que del lado de la secretaria: mientras el paciente tiene
+            // ESTE chat abierto, si la secretaria sigue escribiendo, se
+            // marca leído de inmediato — así el contador no sigue sumando
+            // mientras está viendo la conversación. Solo aplica si el modal
+            // de este centro sigue abierto en este momento.
+            const ultimo = docs[docs.length - 1]?.data();
+            if (ultimo && ultimo.autorRol !== 'paciente' && _kdChat.centroChatPaciente === centroId
+                && document.getElementById('kd-chat-modal-paciente')) {
+                kdMarcarChatLeido(centroId, uid, 'paciente');
+            }
         }, err => console.error('[kdChat-paciente] Error:', err));
 };
 
+/** Cierra el chat del paciente de verdad (no solo el modal): limpia el
+ *  listener y el centro "activo", así si la secretaria sigue escribiendo
+ *  después de que el paciente salió, el contador vuelve a sumar y a
+ *  mostrarse normalmente en la burbuja flotante, tal como debe ser. */
 window._kdCerrarChatPaciente = function() {
     const modal = document.getElementById('kd-chat-modal-paciente');
     if (modal) modal.remove();
     if (_kdChat.unsubMensajesPaciente) { _kdChat.unsubMensajesPaciente(); _kdChat.unsubMensajesPaciente = null; }
+    _kdChat.centroChatPaciente = null;
 };
 
 // ══════════════════════════════════════════════════════════════════
