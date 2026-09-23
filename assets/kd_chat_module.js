@@ -1058,21 +1058,30 @@ function _kdIniciarNotificacionesPaciente() {
     function _kdAjustarTecladoMovil() {
         if (!_kdEsMobile()) return;
 
-        // Evita que la página quede desplazada por detrás del teclado
-        if (window.scrollY !== 0) window.scrollTo(0, 0);
+        // NOTA: antes forzábamos window.scrollTo(0,0) aquí, pero eso "pelea"
+        // contra el propio navegador (que desplaza la página internamente
+        // para mostrar el campo enfocado por encima del teclado) — y ese
+        // choque es justo lo que hacía que el textarea y el botón "←" se
+        // vieran en un sitio pero respondieran al toque en otro. La forma
+        // correcta es seguir ese desplazamiento con vv.offsetTop, no pelear
+        // contra él.
 
-        // --- Chat de la secretaria/médico ---
+        // --- Chat de la secretaria/médico (el propio panel es fixed) ---
         const panelSec = document.querySelector('#kd-chat-panel.kd-chat-panel-abierto');
         if (panelSec) {
             panelSec.style.height = vv.height + 'px';
+            panelSec.style.top    = vv.offsetTop + 'px';
+            panelSec.style.left   = vv.offsetLeft + 'px';
             const msjSec = document.getElementById('kd-chat-mensajes');
             if (msjSec) msjSec.scrollTop = msjSec.scrollHeight;
         }
 
-        // --- Chat del paciente (refuerzo: ya funcionaba con 100dvh; esto
-        //     lo hace robusto también en navegadores sin buen soporte de dvh) ---
+        // --- Chat del paciente (el fixed es el modal/backdrop, no la ventana) ---
         const modalPac = document.getElementById('kd-chat-modal-paciente');
         if (modalPac) {
+            modalPac.style.height = vv.height + 'px';
+            modalPac.style.top    = vv.offsetTop + 'px';
+            modalPac.style.left   = vv.offsetLeft + 'px';
             const ventana = modalPac.querySelector('.kd-chat-ventana-paciente');
             if (ventana) ventana.style.height = vv.height + 'px';
             const msjPac = document.getElementById('kd-chat-mensajes-paciente');
