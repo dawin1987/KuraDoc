@@ -2096,6 +2096,11 @@ async function renderMedicos() {
                             <div style="font-size: 13px; color: #4b5563; display: flex; flex-direction: column; gap: 4px;">
                                 <span>📞 ${m.telefono || '---'}</span>
                                 <span style="text-transform: capitalize;">🏥 ${m.tipoServicio}</span>
+                                <span style="font-size: 11px; font-weight: 700;">
+                                    <span style="color: ${_medicoTieneNotifWA(m) ? '#166534' : '#991b1b'};">💬 Notif. ${_medicoTieneNotifWA(m) ? '✔' : '✖'}</span>
+                                    &nbsp;·&nbsp;
+                                    <span style="color: ${_medicoTieneRecordatorioWA(m) ? '#166534' : '#991b1b'};">⏰ Record. ${_medicoTieneRecordatorioWA(m) ? '✔' : '✖'}</span>
+                                </span>
                             </div>
                             
                             ${m.tipoServicio === 'privado' ? `
@@ -2114,6 +2119,87 @@ async function renderMedicos() {
 }
 
 
+
+// ═══════════════════════════════════════════════════════════════
+//  REGLAS DE NOTIFICACIÓN WHATSAPP (KuraDoc → Meta)
+//  Una cita dispara notificación + recordatorio SOLO si:
+//    1) El médico tiene las notificaciones activas (lo decide el admin).
+//    2) La cita se toma con MÁS de NOTIF_WA_MIN_HORAS de anticipación
+//       respecto al inicio de la tanda. Si no, el paciente está en el
+//       centro y la cita se registra solo por control interno.
+//  Los campos resultantes se guardan en la cita para que la Cloud
+//  Function los respete (enviarNotificacionWA / enviarRecordatorioWA).
+// ═══════════════════════════════════════════════════════════════
+const NOTIF_WA_MIN_HORAS = 12;
+const NOTIF_WA_INICIO_TANDA = { matutina: { h: 8, m: 0 }, vespertina: { h: 14, m: 0 } };
+
+// Médicos creados antes de esta función no tienen el campo => se consideran ACTIVOS
+// (así no se corta el servicio actual). Solo un `false` explícito lo desactiva.
+function _medicoTieneNotifWA(medico) {
+    return !!medico && medico.notificacionesWA !== false;
+}
+
+// Recordatorio: interruptor independiente. Si el médico se guardó con la versión
+// anterior (un solo interruptor, sin `recordatoriosWA`), hereda lo que tenía en `notificacionesWA`.
+function _medicoTieneRecordatorioWA(medico) {
+    if (!medico) return false;
+    if (medico.recordatoriosWA !== undefined) return medico.recordatoriosWA !== false;
+    return medico.notificacionesWA !== false;
+}
+
+function _horasHastaCita(fechaStr, tanda, ahora) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(fechaStr || ''));
+    if (!m) return null;
+    const ini = NOTIF_WA_INICIO_TANDA[tanda] || NOTIF_WA_INICIO_TANDA.matutina;
+    const inicioCita = new Date(+m[1], +m[2] - 1, +m[3], ini.h, ini.m, 0, 0);
+    return (inicioCita.getTime() - (ahora || new Date()).getTime()) / 3600000;
+}
+
+function _evaluarNotifWA(medico, fechaStr, tanda) {
+    const horas = _horasHastaCita(fechaStr, tanda);
+    const horasRed = horas === null ? null : Math.round(horas * 10) / 10;
+
+    // Regla de tiempo: aplica igual a la notificación y al recordatorio
+    let motivoTiempo = null;
+    if (horas === null)                motivoTiempo = 'fecha_invalida';
+    else if (horas <= NOTIF_WA_MIN_HORAS) motivoTiempo = 'cita_inmediata';
+
+    // Reglas del médico: cada interruptor es independiente
+    const motivoNotif = !_medicoTieneNotifWA(medico)        ? 'medico_desactivado'
+                      : motivoTiempo;
+    const motivoRecord = !_medicoTieneRecordatorioWA(medico) ? 'recordatorio_desactivado'
+                       : motivoTiempo;
+
+    return {
+        enviarNotif:       !motivoNotif,
+        enviarRecordatorio: !motivoRecord,
+        motivoNotif:       motivoNotif,
+        motivoRecordatorio: motivoRecord,
+        horas:             horasRed,
+    };
+}
+
+function _camposNotifWA(r) {
+    return {
+        notificacionPendiente:      r.enviarNotif,   // trigger existente de la Cloud Function
+        enviarNotificacionWA:       r.enviarNotif,
+        enviarRecordatorioWA:       r.enviarRecordatorio,
+        notifWAOmitidaMotivo:       r.motivoNotif,
+        recordatorioWAOmitidoMotivo: r.motivoRecordatorio,
+        horasAnticipacionCita:      r.horas,
+    };
+}
+
+function _avisoNotifWAOmitida(r) {
+    if (typeof window._mostrarToast !== 'function') return;
+    let msg = null;
+    if (r.motivoNotif === 'cita_inmediata') {
+        msg = `💬 Cita con menos de ${NOTIF_WA_MIN_HORAS} h de anticipación: no se envía notificación ni recordatorio por WhatsApp.`;
+    } else if (r.motivoNotif === 'medico_desactivado') {
+        msg = '💬 Este médico tiene la notificación de cita por WhatsApp desactivada.';
+    }
+    if (msg) window._mostrarToast(msg, 'info');
+}
 
       function openModalMedico(medicoId = null) {
     // Buscar datos si es edición
@@ -2259,6 +2345,35 @@ async function renderMedicos() {
                                 <input type="checkbox" id="medicoVIP" ${datos?.esVIP ? 'checked' : ''}>
                                 <span class="slider round"></span>
                             </label>
+                        </div>
+
+                        <!-- ── Notificaciones y recordatorios WhatsApp (solo admin) ── -->
+                        <div style="margin-top: 15px; padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
+                            <h4 style="margin: 0 0 2px; color: #166534; font-size: 14px;">💬 WhatsApp a pacientes de este médico</h4>
+                            <p style="margin: 0 0 10px; font-size: 11px; color: #15803d;">
+                                Solo se envían para citas con más de ${NOTIF_WA_MIN_HORAS} h de anticipación. Aplica a citas creadas por el
+                                paciente, la secretaria o el mismo médico. Cada opción se activa por separado.
+                            </p>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px dashed #bbf7d0;">
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 700; color: #166534;">📩 Notificación de cita</div>
+                                    <div style="font-size: 11px; color: #15803d;">Mensaje con el link de confirmación al agendar.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="medicoNotifWA" ${datos?.notificacionesWA === false ? '' : 'checked'}>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0 0; border-top: 1px dashed #bbf7d0;">
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 700; color: #166534;">⏰ Recordatorio de cita</div>
+                                    <div style="font-size: 11px; color: #15803d;">Mensaje la noche anterior a la cita (8:00 PM).</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="medicoRecordatorioWA" ${(datos && !_medicoTieneRecordatorioWA(datos)) ? '' : 'checked'}>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
                         </div>
 
                         <!-- ── Fotos del médico ──────────────────────── -->
@@ -2458,6 +2573,8 @@ async function submitMedico(e, medicoId = null) {
  
     const tipo  = document.getElementById('medicoTipo').value;
     const esVIP = document.getElementById('medicoVIP').checked;
+    const notificacionesWA = document.getElementById('medicoNotifWA')?.checked !== false;
+    const recordatoriosWA  = document.getElementById('medicoRecordatorioWA')?.checked !== false;
  
     // Recolectar horarios
     const horarioLaboral = {};
@@ -2516,6 +2633,10 @@ async function submitMedico(e, medicoId = null) {
         tipoServicio:     tipo,
         costoConsulta:    tipo === 'privado' ? parseInt(document.getElementById('medicoCosto').value) : 0,
         esVIP:            esVIP,
+        notificacionesWA: notificacionesWA,
+        recordatoriosWA:  recordatoriosWA,
+        notificacionesWAModificadoPor: appState.currentUser?.uid || '',
+        notificacionesWAModificadoEn:  firebase.firestore.FieldValue.serverTimestamp(),
         modulosActivos:   _leerModulosDelModal(),
         planNombre:       document.getElementById('planNombreSeleccionado')?.value || '',
         planMedico: {
@@ -3871,7 +3992,7 @@ function renderItemCitaTemplate(c, tipo) {
                            ✅ Confirmar llegada
                        </button>
 
-                       ${c.telefonoPaciente ? `
+                       ${(c.telefonoPaciente && _medicoTieneNotifWA(_uGet(c.medicoId))) ? `
                        <button
                            onclick="_accionMenuCita('${c.id}');reenviarNotifWA('${c.id}',this)"
                            style="width:100%;text-align:left;padding:8px 10px;border:none;
@@ -4321,6 +4442,11 @@ window.reenviarNotifWA = async function(citaId, btn) {
 
     if (!cita.telefonoPaciente) {
         alert('Este paciente no tiene teléfono registrado.');
+        return;
+    }
+
+    if (!_medicoTieneNotifWA(_uGet(cita.medicoId))) {
+        alert('Las notificaciones de WhatsApp están desactivadas para este médico. El administrador puede activarlas desde la edición del médico.');
         return;
     }
 
@@ -5121,6 +5247,11 @@ window._guardarReprogramacion = async function(citaId) {
             ordenAtencion:     null,
             confirmadoPorPaciente: false,
         };
+
+        // Recordatorio WhatsApp: se reevalúa con la nueva fecha (médico activo + >12 h de anticipación)
+        const _nw = _evaluarNotifWA(medico, nuevaFecha, nuevaTanda);
+        actualizar.enviarRecordatorioWA = _nw.enviarRecordatorio;
+        actualizar.recordatorioWAOmitidoMotivo = _nw.motivoRecordatorio;
 
         await db.collection('citas').doc(citaId).update(actualizar);
         if (!navigator.onLine) {
@@ -6888,6 +7019,9 @@ async function procesarReservaCita(medicoId) {
     const _citaToken = 'cita_' + Date.now() + '_' + Math.random().toString(36).substring(2,10);
     const _appUrl    = window.location.origin + window.location.pathname;
 
+    // ── Reglas WhatsApp: médico activo + cita con >12 h de anticipación ──
+    const _notifWA = _evaluarNotifWA(medico, selectedDate, selectedTanda);
+
     const nuevaCita = {
         pacienteId: pacienteIdParaCita,
         medicoId: medicoId,
@@ -6930,7 +7064,7 @@ async function procesarReservaCita(medicoId) {
         urlConfirmacion:        _appUrl + '?confirmarCita=' + _citaToken,
         whatsappNotifAgenda:    false,  // Cloud Function lo pone true al enviar
         whatsappNotifRecordatorio: false,
-        notificacionPendiente:  true,   // Trigger para Cloud Function
+        ..._camposNotifWA(_notifWA),    // notificacionPendiente + enviarNotificacionWA/RecordatorioWA
     };
 
     // ── Sanitizar: eliminar campos undefined antes de enviar a Firestore ──
@@ -6960,6 +7094,7 @@ async function procesarReservaCita(medicoId) {
             if (sinConexion && typeof window._mostrarToast === 'function') {
                 window._mostrarToast('📴 Sin conexión: la cita se guardó en este dispositivo y se sincronizará sola cuando vuelva el internet.', 'info');
             }
+            _avisoNotifWAOmitida(_notifWA);
             setTimeout(() => abrirModalTicketCita(citaConId), 300);
         } else {
             if (sinConexion) {
@@ -23480,6 +23615,9 @@ async function _guardarCitaConRecord(medicoId) {
     const _citaToken = 'cita_' + Date.now() + '_' + Math.random().toString(36).substring(2,10);
     const _appUrl    = window.location.origin + window.location.pathname;
 
+    // ── Reglas WhatsApp: médico activo + cita con >12 h de anticipación ──
+    const _notifWA = _evaluarNotifWA(medico, selectedDate, selectedTanda);
+
     const nuevaCita = {
         pacienteId: pacienteIdParaCita,
         medicoId: medicoId,
@@ -23521,7 +23659,7 @@ async function _guardarCitaConRecord(medicoId) {
         urlConfirmacion:        _appUrl + '?confirmarCita=' + _citaToken,
         whatsappNotifAgenda:    false,
         whatsappNotifRecordatorio: false,
-        notificacionPendiente:  true,
+        ..._camposNotifWA(_notifWA),    // notificacionPendiente + enviarNotificacionWA/RecordatorioWA
         // ── NÚMERO DE RÉCORD ─────────────────────────────────
         numeroRecord: appState._recordParaCita || '',
     };
@@ -23554,6 +23692,7 @@ async function _guardarCitaConRecord(medicoId) {
             if (sinConexion && typeof window._mostrarToast === 'function') {
                 window._mostrarToast('📴 Sin conexión: la cita se guardó en este dispositivo y se sincronizará sola cuando vuelva el internet.', 'info');
             }
+            _avisoNotifWAOmitida(_notifWA);
             setTimeout(() => abrirModalTicketCita(citaConId), 300);
         } else {
             if (sinConexion) {
