@@ -274,9 +274,10 @@ function renderInboxChatSecretaria() {
             #kd-chat-mensajes::-webkit-scrollbar { width:6px; }
             #kd-chat-mensajes::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
 
-            .kd-chat-form { display:flex;gap:8px;padding:10px 14px;border-top:1px solid #e2e8f0;background:#f8fafc; flex-shrink:0; }
+            .kd-chat-form { display:flex;gap:8px;padding:10px 14px;border-top:1px solid #e2e8f0;background:#f8fafc; flex-shrink:0;
+                padding-bottom:calc(10px + env(safe-area-inset-bottom,0px)); }
              
-            .kd-chat-form input { flex:1;padding:11px 16px;border:1px solid #d1d5db;border-radius:24px;font-size:14px;outline:none; }
+            .kd-chat-form input { flex:1;padding:11px 16px;border:1px solid #d1d5db;border-radius:24px;font-size:16px;outline:none; }
             .kd-chat-form button { background:#2563eb;color:white;border:none;border-radius:50%;
                 width:42px;height:42px;font-size:17px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center; }
 
@@ -285,8 +286,13 @@ function renderInboxChatSecretaria() {
                 .kd-chat-shell { height:calc(108vh - 150px); border-radius:0; border:none; margin:0 -14px; }
                 .kd-chat-lista { width:100%; min-width:100%; border-right:none; }
                 .kd-chat-panel {
-                    position:absolute; inset:0; z-index:5; background:#efeae2;
+                    /* fixed + inset:0, igual que el modal del paciente: así el panel
+                       queda anclado al viewport real del teléfono y no al flujo
+                       normal de la página, que es lo que hacía que el input del
+                       chat de la secretaria se quedara "debajo" del teclado. */
+                    position:fixed; inset:0; z-index:9200; background:#efeae2;
                     transform:translateX(100%); transition:transform .22s ease;
+                    height:100vh; height:100dvh;
                 }
                 .kd-chat-panel.kd-chat-panel-abierto { transform:translateX(0); }
                 .kd-chat-back-mobile { display:inline-block; }
@@ -704,7 +710,7 @@ function _kdInsertarFabPaciente() {
     if (document.getElementById('kd-chat-fab-paciente')) return;
     document.body.insertAdjacentHTML('beforeend', `
         <button id="kd-chat-fab-paciente" onclick="_kdAbrirPickerChatsPaciente()" title="Mis mensajes"
-            style="position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;
+            style="position:fixed;bottom:60px;right:20px;width:56px;height:56px;border-radius:50%;
                    background:linear-gradient(135deg,#1e3a5f,#2563eb);color:white;border:none;
                    box-shadow:0 6px 20px rgba(37,99,235,.4);font-size:24px;cursor:pointer;z-index:9990;
                    display:none;align-items:center;justify-content:center;">
@@ -863,4 +869,70 @@ function _kdIniciarNotificacionesPaciente() {
         }
         _orig(view);
     };
+})();
+
+// ══════════════════════════════════════════════════════════════════
+//  7. TECLADO MÓVIL — mantiene el campo de escritura pegado al teclado
+//     (secretaria Y paciente), y lo regresa solo a su posición cuando
+//     el teclado se oculta.
+//
+//     Por qué hace falta: "100vh"/"100dvh" en CSS le dicen al panel
+//     que ocupe el alto de la pantalla, pero en varios navegadores
+//     móviles ese valor NO se reduce cuando aparece el teclado — solo
+//     la "visual viewport" (el área realmente visible) lo hace. Por
+//     eso escuchamos window.visualViewport en vez de confiar solo en
+//     el CSS: es el mismo mecanismo que usan WhatsApp Web, Telegram
+//     Web, etc. para que el input "suba" pegado al teclado.
+// ══════════════════════════════════════════════════════════════════
+(function _kdInicializarTecladoMovil() {
+    if (!window.visualViewport) return; // navegador muy viejo: se queda con el comportamiento normal del CSS
+
+    const vv = window.visualViewport;
+
+    function _kdEsMobile() { return window.innerWidth <= 640; }
+
+    function _kdAjustarTecladoMovil() {
+        if (!_kdEsMobile()) return;
+
+        // Evita que la página quede desplazada por detrás del teclado
+        if (window.scrollY !== 0) window.scrollTo(0, 0);
+
+        // --- Chat de la secretaria/médico ---
+        const panelSec = document.querySelector('#kd-chat-panel.kd-chat-panel-abierto');
+        if (panelSec) {
+            panelSec.style.height = vv.height + 'px';
+            const msjSec = document.getElementById('kd-chat-mensajes');
+            if (msjSec) msjSec.scrollTop = msjSec.scrollHeight;
+        }
+
+        // --- Chat del paciente (refuerzo: ya funcionaba con 100dvh; esto
+        //     lo hace robusto también en navegadores sin buen soporte de dvh) ---
+        const modalPac = document.getElementById('kd-chat-modal-paciente');
+        if (modalPac) {
+            const ventana = modalPac.querySelector('.kd-chat-ventana-paciente');
+            if (ventana) ventana.style.height = vv.height + 'px';
+            const msjPac = document.getElementById('kd-chat-mensajes-paciente');
+            if (msjPac) msjPac.scrollTop = msjPac.scrollHeight;
+        }
+    }
+
+    // Se dispara cada vez que el teclado sube, baja, o cambia de tamaño
+    // (ej. sugerencias de texto de Android). Al ocultarse el teclado,
+    // este mismo evento devuelve todo a su alto completo automáticamente.
+    vv.addEventListener('resize', _kdAjustarTecladoMovil);
+    vv.addEventListener('scroll', _kdAjustarTecladoMovil);
+
+    // Al enfocar el input de cualquiera de los dos chats, nos aseguramos
+    // de que quede visible apenas termine de subir el teclado (que tarda
+    // ~150-300ms en desplegarse en iOS/Android).
+    document.addEventListener('focusin', function(e) {
+        if (!_kdEsMobile()) return;
+        const id = e.target && e.target.id;
+        if (id === 'kd-chat-input' || id === 'kd-chat-input-paciente') {
+            setTimeout(() => {
+                _kdAjustarTecladoMovil();
+                e.target.scrollIntoView({ block: 'end', behavior: 'smooth' });
+            }, 300);
+        }
+    });
 })();
