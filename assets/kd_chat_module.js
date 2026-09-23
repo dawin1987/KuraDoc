@@ -34,12 +34,17 @@ const _kdChat = {
     chats:           [],       // caché de la bandeja de hoy
     filtroLista:     '',       // texto del buscador de la bandeja
     escribiendoTimer: null,    // debounce del indicador "escribiendo…" (lado secretaria)
+    escribiendoActivo: false,  // evita re-escribir "true" en Firestore en cada tecla (secretaria)
+    renderListaAgendado: false, // agrupa varios snapshots seguidos en un solo repintado (evita el "freeze")
+    enviandoSecretaria: false, // evita doble envío / doble submit
     // Estado del widget del paciente
     unsubMensajesPaciente: null,
     centroChatPaciente: null,
     notifPacienteIniciado: false,
     chatsPacienteInfo: [],     // [{centroId, centroNombre, noLeidosPaciente, noLeidosSecretaria, escribiendoSecretaria}]
     escribiendoTimerPaciente: null,
+    escribiendoActivoPaciente: false,
+    enviandoPaciente: false,
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -83,10 +88,14 @@ async function kdEnviarMensajeChat(centroId, pacienteId, texto, autor, datosPaci
         ? { noLeidosSecretaria: firebase.firestore.FieldValue.increment(1) }
         : { noLeidosPaciente:   firebase.firestore.FieldValue.increment(1) };
 
-    // Al enviar, apago mi propio indicador de "escribiendo…"
+    // Al enviar, apago mi propio indicador de "escribiendo…" — y también
+    // el flag local que evita escrituras repetidas (ver _kdEmitirEscribiendo),
+    // para que si vuelve a escribir enseguida, se vuelva a marcar bien.
     const limpiarEscribiendo = esPaciente
         ? { escribiendoPaciente: false }
         : { escribiendoSecretaria: false };
+    if (esPaciente) { _kdChat.escribiendoActivoPaciente = false; if (_kdChat.escribiendoTimerPaciente) clearTimeout(_kdChat.escribiendoTimerPaciente); }
+    else { _kdChat.escribiendoActivo = false; if (_kdChat.escribiendoTimer) clearTimeout(_kdChat.escribiendoTimer); }
 
     const centro = (appState.centrosMedicos || []).find(c => c.id === centroId);
 
@@ -136,9 +145,23 @@ async function kdMarcarChatLeido(centroId, pacienteId, rolQueAbre) {
  */
 function _kdEmitirEscribiendo(centroId, pacienteId, campo, timerKey) {
     const chatRef = db.collection('centrosMedicos').doc(centroId).collection('chats').doc(pacienteId);
-    chatRef.set({ [campo]: true }, { merge: true }).catch(() => {});
+
+    // Clave del flag "ya está marcado como escribiendo" según el campo.
+    // IMPORTANTE: solo escribimos "true" en Firestore la PRIMERA vez que
+    // el usuario empieza a teclear, no en cada tecla. Escribir en cada
+    // tecla dispara el listener GLOBAL de la bandeja en cada pulsación
+    // (Firestore aplica la escritura de forma optimista/local al instante),
+    // lo que reconstruye toda la lista de conversaciones decenas de veces
+    // mientras se escribe un solo mensaje — esa es la causa del "freeze".
+    const flagKey = campo === 'escribiendoPaciente' ? 'escribiendoActivoPaciente' : 'escribiendoActivo';
+    if (!_kdChat[flagKey]) {
+        _kdChat[flagKey] = true;
+        chatRef.set({ [campo]: true }, { merge: true }).catch(() => {});
+    }
+
     if (_kdChat[timerKey]) clearTimeout(_kdChat[timerKey]);
     _kdChat[timerKey] = setTimeout(() => {
+        _kdChat[flagKey] = false;
         chatRef.set({ [campo]: false }, { merge: true }).catch(() => {});
     }, 3000);
 }
@@ -147,6 +170,12 @@ function _kdEmitirEscribiendo(centroId, pacienteId, campo, timerKey) {
 function _kdChatHora(ts) {
     if (!ts?.toDate) return '';
     return ts.toDate().toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Hace crecer el textarea del chat con el texto (como WhatsApp), hasta un máximo, luego scrollea */
+function _kdAutoAlturaTextarea(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 
 function _kdChatEscapar(str) {
@@ -275,9 +304,10 @@ function renderInboxChatSecretaria() {
             #kd-chat-mensajes::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
 
             .kd-chat-form { display:flex;gap:8px;padding:10px 14px;border-top:1px solid #e2e8f0;background:#f8fafc; flex-shrink:0;
-                padding-bottom:calc(10px + env(safe-area-inset-bottom,0px)); }
+                align-items:flex-end; padding-bottom:calc(10px + env(safe-area-inset-bottom,0px)); }
              
-            .kd-chat-form input { flex:1;padding:11px 16px;border:1px solid #d1d5db;border-radius:24px;font-size:16px;outline:none; }
+            .kd-chat-form textarea { flex:1;padding:11px 16px;border:1px solid #d1d5db;border-radius:22px;font-size:16px;
+                outline:none;resize:none;font-family:inherit;line-height:1.3;max-height:120px;overflow-y:auto;box-sizing:border-box; }
             .kd-chat-form button { background:#2563eb;color:white;border:none;border-radius:50%;
                 width:42px;height:42px;font-size:17px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center; }
 
@@ -332,10 +362,18 @@ function _kdIniciarBandejaGlobal(centroId) {
             .sort((a, b) => (b.ultimoMensajeFecha?.toMillis?.() || 0) - (a.ultimoMensajeFecha?.toMillis?.() || 0));
         _kdChat.chatsListos = true;
         _kdActualizarBadgeMenu();
-        // Si la vista "Mensajes" está abierta en este momento, repintarla también
-        if (appState.currentView === 'mensajes') {
-            _kdRenderListaChats();
-            _kdRefrescarHeaderConversacionAbierta();
+        // Si la vista "Mensajes" está abierta en este momento, repintarla también.
+        // Se agenda con requestAnimationFrame (agrupando ráfagas de snapshots
+        // seguidos, p. ej. varios chats cambiando casi a la vez) en vez de
+        // repintar la lista completa de forma síncrona en cada evento —
+        // eso era lo que provocaba el "freeze" al escribir/enviar.
+        if (appState.currentView === 'mensajes' && !_kdChat.renderListaAgendado) {
+            _kdChat.renderListaAgendado = true;
+            requestAnimationFrame(() => {
+                _kdChat.renderListaAgendado = false;
+                _kdRenderListaChats();
+                _kdRefrescarHeaderConversacionAbierta();
+            });
         }
     }, err => {
         console.error('[kdChat] Error escuchando bandeja global:', err);
@@ -415,27 +453,70 @@ window._kdAbrirConversacion = function(pacienteId) {
         </div>
         <div id="kd-chat-mensajes"></div>
         <form id="kd-chat-form" class="kd-chat-form">
-            <input id="kd-chat-input" type="text" placeholder="Escribe un mensaje…" autocomplete="off">
-            <button type="submit">➤</button>
+            <textarea id="kd-chat-input" rows="1" placeholder="Escribe un mensaje…" autocomplete="off"></textarea>
+            <button type="submit" id="kd-chat-btn-enviar">➤</button>
         </form>
     `;
 
     const inputEl = document.getElementById('kd-chat-input');
+    const formEl  = document.getElementById('kd-chat-form');
+    const btnEl   = document.getElementById('kd-chat-btn-enviar');
+
     inputEl.addEventListener('input', function() {
-        const u = appState.currentUserData;
+        _kdAutoAlturaTextarea(this);
         const rolCampo = 'escribiendoSecretaria';
         _kdEmitirEscribiendo(centroId, pacienteId, rolCampo, 'escribiendoTimer');
     });
 
-    document.getElementById('kd-chat-form').addEventListener('submit', function(e) {
+    // Evita que tocar el botón ➤ le quite el foco al textarea (eso es lo
+    // que hace que el teclado se oculte solo al enviar). Con esto, el
+    // teclado se queda abierto para seguir escribiendo — solo se oculta
+    // si el usuario lo cierra con el propio botón del teclado.
+    if (btnEl) btnEl.addEventListener('mousedown', function(e) { e.preventDefault(); });
+
+    // Estilo WhatsApp: en PC, Enter envía. En smartphone, Enter (el botón
+    // del teclado táctil) SOLO inserta un salto de línea — el mensaje se
+    // envía exclusivamente con la flechita. Shift+Enter siempre inserta
+    // salto de línea (en PC y en móvil).
+    inputEl.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 640) {
+            e.preventDefault();
+            formEl.requestSubmit ? formEl.requestSubmit() : formEl.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+    });
+
+    formEl.addEventListener('submit', function(e) {
         e.preventDefault();
+        if (_kdChat.enviandoSecretaria) return; // evita doble envío (doble tap / doble Enter)
         const texto = inputEl.value;
+        if (!texto.trim()) return;
+
         inputEl.value = '';
+        _kdAutoAlturaTextarea(inputEl);
+        inputEl.focus({ preventScroll: true }); // refuerzo: mantiene el teclado abierto
         const u = appState.currentUserData;
+
+        _kdChat.enviandoSecretaria = true;
+        if (btnEl) btnEl.style.opacity = '.5';
+
+        // Nunca dejamos la pantalla "colgada": si Firestore tarda demasiado
+        // (mala señal), a los 8s liberamos el botón igual — el mensaje se
+        // termina de enviar solo cuando la conexión vuelva (writeBatch de
+        // Firestore reintenta solo), pero la interfaz sigue respondiendo.
+        const liberar = () => { _kdChat.enviandoSecretaria = false; if (btnEl) btnEl.style.opacity = '1'; };
+        const timeoutId = setTimeout(liberar, 8000);
+
         kdEnviarMensajeChat(centroId, pacienteId, texto, {
             id: appState.currentUser.uid,
             nombre: u.nombre || 'Secretaría',
             rol: u.rol === 'medico' ? 'medico' : (u.rol === 'adminCentro' ? 'adminCentro' : 'secretaria'),
+        }).catch(err => {
+            console.error('[kdChat] Error enviando mensaje:', err);
+            inputEl.value = texto; // devuelve el texto para que no se pierda
+            _kdAutoAlturaTextarea(inputEl);
+        }).finally(() => {
+            clearTimeout(timeoutId);
+            liberar();
         });
     });
 
@@ -603,8 +684,8 @@ window.kdAbrirChatConCentro = function(centroId, centroNombre) {
                 </div>
                 <div id="kd-chat-mensajes-paciente"></div>
                 <form id="kd-chat-form-paciente" class="kd-chat-form-paciente">
-                    <input id="kd-chat-input-paciente" type="text" placeholder="Escribe un mensaje…" autocomplete="off">
-                    <button type="submit">➤</button>
+                    <textarea id="kd-chat-input-paciente" rows="1" placeholder="Escribe un mensaje…" autocomplete="off"></textarea>
+                    <button type="submit" id="kd-chat-btn-enviar-paciente">➤</button>
                 </form>
             </div>
         </div>
@@ -626,8 +707,9 @@ window.kdAbrirChatConCentro = function(centroId, centroNombre) {
             #kd-chat-mensajes-paciente::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
 
             /* Smartphone: pantalla completa, como la app real de WhatsApp */
-           .kd-chat-form-paciente {display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #e2e8f0;background: #f8fafc;flex-shrink: 0;  padding-bottom:calc(10px + env(safe-area-inset-bottom,0px)); }
-            .kd-chat-form-paciente input { flex: 1;padding: 11px 16px;border: 1px solid #d1d5db;border-radius: 24px; font-size: 16px; outline: none;}
+           .kd-chat-form-paciente {display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #e2e8f0;background: #f8fafc;flex-shrink: 0; align-items:flex-end; padding-bottom:calc(10px + env(safe-area-inset-bottom,0px)); }
+            .kd-chat-form-paciente textarea { flex: 1;padding: 11px 16px;border: 1px solid #d1d5db;border-radius: 22px; font-size: 16px;
+                outline: none;resize:none;font-family:inherit;line-height:1.3;max-height:120px;overflow-y:auto;box-sizing:border-box;}
             .kd-chat-form-paciente button {background: #2563eb; color: white;border: none; border-radius: 50%;width: 42px;height: 42px; font-size: 17px;cursor: pointer;flex-shrink: 0;display: flex; align-items: center;justify-content: center;}
             @media (max-width: 640px) {
                 .kd-chat-modal-paciente { padding:0; align-items:stretch; }
@@ -639,18 +721,51 @@ window.kdAbrirChatConCentro = function(centroId, centroNombre) {
     `);
 
     const inputEl = document.getElementById('kd-chat-input-paciente');
+    const formEl  = document.getElementById('kd-chat-form-paciente');
+    const btnEl   = document.getElementById('kd-chat-btn-enviar-paciente');
+
     inputEl.addEventListener('input', function() {
+        _kdAutoAlturaTextarea(this);
         _kdEmitirEscribiendo(centroId, uid, 'escribiendoPaciente', 'escribiendoTimerPaciente');
     });
 
-    document.getElementById('kd-chat-form-paciente').addEventListener('submit', function(e) {
+    if (btnEl) btnEl.addEventListener('mousedown', function(e) { e.preventDefault(); });
+
+    // Igual que en el chat de la secretaria: en PC, Enter envía; en
+    // smartphone, Enter solo hace salto de línea y se envía con la flechita.
+    inputEl.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 640) {
+            e.preventDefault();
+            formEl.requestSubmit ? formEl.requestSubmit() : formEl.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+    });
+
+    formEl.addEventListener('submit', function(e) {
         e.preventDefault();
+        if (_kdChat.enviandoPaciente) return;
         const texto = inputEl.value;
+        if (!texto.trim()) return;
+
         inputEl.value = '';
+        _kdAutoAlturaTextarea(inputEl);
+        inputEl.focus({ preventScroll: true });
+
+        _kdChat.enviandoPaciente = true;
+        if (btnEl) btnEl.style.opacity = '.5';
+        const liberar = () => { _kdChat.enviandoPaciente = false; if (btnEl) btnEl.style.opacity = '1'; };
+        const timeoutId = setTimeout(liberar, 8000);
+
         kdEnviarMensajeChat(centroId, uid, texto,
             { id: uid, nombre: u.nombre || 'Paciente', rol: 'paciente' },
             { nombre: u.nombre, telefono: u.telefono }
-        );
+        ).catch(err => {
+            console.error('[kdChat-paciente] Error enviando mensaje:', err);
+            inputEl.value = texto;
+            _kdAutoAlturaTextarea(inputEl);
+        }).finally(() => {
+            clearTimeout(timeoutId);
+            liberar();
+        });
     });
 
     kdMarcarChatLeido(centroId, uid, 'paciente');
@@ -710,7 +825,7 @@ function _kdInsertarFabPaciente() {
     if (document.getElementById('kd-chat-fab-paciente')) return;
     document.body.insertAdjacentHTML('beforeend', `
         <button id="kd-chat-fab-paciente" onclick="_kdAbrirPickerChatsPaciente()" title="Mis mensajes"
-            style="position:fixed;bottom:60px;right:20px;width:56px;height:56px;border-radius:50%;
+            style="position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;
                    background:linear-gradient(135deg,#1e3a5f,#2563eb);color:white;border:none;
                    box-shadow:0 6px 20px rgba(37,99,235,.4);font-size:24px;cursor:pointer;z-index:9990;
                    display:none;align-items:center;justify-content:center;">
