@@ -99,12 +99,27 @@ async function kdEnviarMensajeChat(centroId, pacienteId, texto, autor, datosPaci
 
     const centro = (appState.centrosMedicos || []).find(c => c.id === centroId);
 
+    // El nombre/teléfono del PACIENTE solo se escribe cuando realmente lo
+    // tenemos: si quien envía es el paciente (autor.nombre es su propio
+    // nombre) o si nos pasaron datosPaciente explícitamente. Si es la
+    // secretaria/médico quien escribe, NO tocamos estos campos — antes se
+    // sobreescribía pacienteNombre con el nombre de la secretaria cada vez
+    // que ella respondía, y por eso el nombre "se intercambiaba" en la
+    // lista de conversaciones.
+    const datosDelPaciente = {};
+    if (esPaciente) {
+        datosDelPaciente.pacienteNombre   = autor.nombre || '—';
+        datosDelPaciente.pacienteTelefono = datosPaciente?.telefono || '';
+    } else if (datosPaciente?.nombre) {
+        datosDelPaciente.pacienteNombre = datosPaciente.nombre;
+        if (datosPaciente?.telefono) datosDelPaciente.pacienteTelefono = datosPaciente.telefono;
+    }
+
     batch.set(chatRef, {
         pacienteId,
         centroId,
         centroNombre:          centro?.nombre || '—',
-        pacienteNombre:        datosPaciente?.nombre    || autor.nombre || '—',
-        pacienteTelefono:      datosPaciente?.telefono   || '',
+        ...datosDelPaciente,
         ultimoMensajeTexto:    texto,
         ultimoMensajeAutorRol: autor.rol,
         ultimoMensajeFecha:    firebase.firestore.FieldValue.serverTimestamp(),
