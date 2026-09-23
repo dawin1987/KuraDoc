@@ -540,10 +540,16 @@ window._kdAbrirConversacion = function(pacienteId) {
     _kdRefrescarHeaderConversacionAbierta();
 };
 
-/** Botón "←" en mobile: vuelve a la lista sin perder el listener (por si escriben de nuevo) */
+/** Botón "←" en mobile: vuelve a la lista. Cierra la conversación de
+ *  verdad (no solo la oculta) — así, si el paciente sigue escribiendo
+ *  después de que la secretaria sale, el contador de "no leídos" vuelve
+ *  a sumar y a mostrarse normalmente, tal como debe ser. */
 window._kdCerrarConversacionMobile = function() {
     const panel = document.getElementById('kd-chat-panel');
     if (panel) panel.classList.remove('kd-chat-panel-abierto');
+    if (_kdChat.unsubMensajes) { _kdChat.unsubMensajes(); _kdChat.unsubMensajes = null; }
+    _kdChat.chatActivoId = null;
+    _kdRenderListaChats(); // quita el resaltado "activo" de la lista
 };
 
 /** Pinta "escribiendo…" o el teléfono en el header, según el estado en caché de la bandeja */
@@ -591,6 +597,18 @@ function _kdEscucharMensajes(centroId, pacienteId) {
             </div>`;
         }).join('') || `<div style="text-align:center;color:#64748b;font-size:12px;margin:auto;background:rgba(255,255,255,.7);padding:8px 14px;border-radius:8px;">Sin mensajes aún.</div>`;
         cont.scrollTop = cont.scrollHeight;
+
+        // Mientras la secretaria tiene ESTE chat abierto en pantalla, si el
+        // paciente sigue escribiendo, marcamos de inmediato como leído —
+        // igual que WhatsApp: los mensajes que llegan mientras estás viendo
+        // la conversación no se acumulan como "no leídos". Solo aplica si
+        // el chat que llegó sigue siendo el que está abierto ahora mismo
+        // (si la secretaria ya salió de esta conversación, chatActivoId ya
+        // no coincide y aquí no hacemos nada — ahí sí debe volver a sumar).
+        const ultimo = docs[docs.length - 1]?.data();
+        if (ultimo && ultimo.autorId !== miUid && _kdChat.chatActivoId === pacienteId) {
+            kdMarcarChatLeido(centroId, pacienteId, 'secretaria');
+        }
     }, err => console.error('[kdChat] Error escuchando mensajes:', err));
 }
 
