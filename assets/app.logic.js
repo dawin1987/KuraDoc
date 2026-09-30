@@ -2248,6 +2248,16 @@ function _avisoNotifWAOmitida(r) {
                                 <input type="text" class="form-input" id="medicoExperiencia" value="${datos?.experiencia || ''}" placeholder="Ej: 15 años" required>
                             </div>
                         </div>
+
+                        <div class="form-group">
+                            <label class="form-label">📲 WhatsApp de contacto (opcional)</label>
+                            <input type="tel" class="form-input" id="medicoWhatsappContacto" value="${datos?.whatsappContacto || ''}" placeholder="Ej: 809-555-1234">
+                            <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">
+                                Número de la secretaria o del médico al que escribirá el paciente desde el recordatorio.
+                                Si se deja vacío se usa el teléfono del médico y, si no sirve, el del centro.
+                                No uses el número registrado en la API de WhatsApp Business.
+                            </div>
+                        </div>
                           
                           <div class="form-group">
                                 <label class="form-label">Tiempo en Labor *</label>
@@ -2367,7 +2377,7 @@ function _avisoNotifWAOmitida(r) {
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0 0; border-top: 1px dashed #bbf7d0;">
                                 <div>
                                     <div style="font-size: 13px; font-weight: 700; color: #166534;">⏰ Recordatorio de cita</div>
-                                    <div style="font-size: 11px; color: #15803d;">Mensaje la noche anterior a la cita (8:00 PM).</div>
+                                    <div style="font-size: 11px; color: #15803d;">Mensaje el día anterior a la cita (1:00 PM), con botón para contactar por WhatsApp.</div>
                                 </div>
                                 <label class="switch">
                                     <input type="checkbox" id="medicoRecordatorioWA" ${(datos && !_medicoTieneRecordatorioWA(datos)) ? '' : 'checked'}>
@@ -2620,6 +2630,7 @@ async function submitMedico(e, medicoId = null) {
     const datosMedico = {
         nombre:           document.getElementById('medicoNombre').value,
         telefono:         document.getElementById('medicoTelefono').value,
+        whatsappContacto: (document.getElementById('medicoWhatsappContacto')?.value || '').trim(),
         direccion:        document.getElementById('medicoDireccion').value,
         centroMedicoId:   document.getElementById('medicoCentro').value,
         especialidad:     document.getElementById('medicoEspecialidad').value,
@@ -9647,7 +9658,7 @@ function imprimirReporteFinanciero() {
 
 <!-- ── Pie ── -->
 <div class="rpt-footer">
-    <div>KuraDoc · Sistema de Gestión Clínica · AppMedicaRD</div>
+    <div>KuraDoc · Sistema de Gestión Clínica · KuraDoc</div>
     <div>Este reporte es confidencial y de uso interno. No distribuir sin autorización.</div>
     <div>Generado el ${fechaGen} a las ${horaGen}</div>
 </div>
@@ -20286,10 +20297,12 @@ window.renderPaginaConfirmarCita = async function(token) {
 
                 <!-- Logo -->
                 <div style="text-align:center;margin-bottom:24px;">
-                    <div style="width:60px;height:60px;background:linear-gradient(135deg,#2563eb,#0ea5e9);
-                        border-radius:18px;display:inline-flex;align-items:center;justify-content:center;
-                        font-size:28px;box-shadow:0 8px 24px rgba(37,99,235,.25);margin-bottom:10px;">🏥</div>
-                    <div style="font-size:18px;font-weight:900;color:#0f172a;letter-spacing:-.3px;">AppMedicaRD</div>
+                    <div style=" border-radius:18px;display:inline-flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 8px 24px rgba(37,99,235,.25);margin-bottom:10px;">
+                        <img src="img/logok.png?v=2" alt="KuraDoc" class="kd-logo-img">
+                     </div>
+                       
+                    
+                  
                     <div style="font-size:12px;color:#64748b;">Sistema de Gestión Clínica</div>
                 </div>
 
@@ -20324,7 +20337,6 @@ window.renderPaginaConfirmarCita = async function(token) {
                             ${_citaChip('🩺 Especialidad', cita.especialidadMedico || '—')}
                             ${_citaChip('📅 Fecha',        fechaBonita)}
                             ${_citaChip('🕐 Tanda',        tandaLabel)}
-                            ${_citaChip('🎫 Turno',        '#' + (cita.numeroOrden || '—'))}
                             ${cita.nombreCentro ? _citaChip('🏥 Centro', cita.nombreCentro) : ''}
                         </div>
 
@@ -24711,7 +24723,7 @@ window._piVerDetalleCita = function(citaId) {
             <div class="pi-detail-grid">
                 <div class="pi-detail-item"><span class="pi-detail-label">📅 Fecha</span><span class="pi-detail-val" style="text-transform:capitalize">${fechaBonita}</span></div>
                 <div class="pi-detail-item"><span class="pi-detail-label">🕐 Tanda</span><span class="pi-detail-val">${tanda}</span></div>
-                <div class="pi-detail-item"><span class="pi-detail-label">🎫 Turno</span><span class="pi-detail-val" style="font-size:20px;font-weight:900;color:${estadoColors}">#${c.ordenAtencion || c.numeroOrden || '—'}</span></div>
+                
                 <div class="pi-detail-item"><span class="pi-detail-label">📊 Estado</span><span class="pi-detail-val"><span style="background:${estadoColors}20;color:${estadoColors};padding:3px 10px;border-radius:20px;font-weight:700;font-size:11px">${(c.estado || 'pendiente').toUpperCase()}</span></span></div>
                 ${centro.nombre ? `<div class="pi-detail-item"><span class="pi-detail-label">🏥 Centro</span><span class="pi-detail-val">${centro.nombre}</span></div>` : ''}
                 ${centro.direccion ? `<div class="pi-detail-item"><span class="pi-detail-label">📍 Dirección</span><span class="pi-detail-val">${centro.direccion}</span></div>` : ''}
