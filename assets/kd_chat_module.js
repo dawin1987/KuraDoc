@@ -891,7 +891,7 @@ function _kdInsertarFabPaciente() {
     if (document.getElementById('kd-chat-fab-paciente')) return;
     document.body.insertAdjacentHTML('beforeend', `
         <button id="kd-chat-fab-paciente" onclick="_kdAbrirPickerChatsPaciente()" title="Mis mensajes"
-            style="position:fixed;bottom:87px;right:20px;width:56px;height:56px;border-radius:50%;
+            style="position:fixed;bottom:60px;right:20px;width:56px;height:56px;border-radius:50%;
                    background:linear-gradient(135deg,#1e3a5f,#2563eb);color:white;border:none;
                    box-shadow:0 6px 20px rgba(37,99,235,.4);font-size:24px;cursor:pointer;z-index:9990;
                    display:none;align-items:center;justify-content:center;">
@@ -928,7 +928,11 @@ window._kdAbrirPickerChatsPaciente = function() {
     }
 
     let picker = document.getElementById('kd-chat-picker-paciente');
-    if (picker) { picker.remove(); return; } // toggle: si ya estaba abierto, ciérralo
+    if (picker) { // toggle: si ya estaba abierto, ciérralo
+        picker.remove();
+        document.removeEventListener('click', _kdCerrarPickerAlTocarFuera);
+        return;
+    }
 
     const ordenados = [...activos].sort((a, b) => (b.noLeidosPaciente || 0) - (a.noLeidosPaciente || 0));
 
@@ -937,8 +941,13 @@ window._kdAbrirPickerChatsPaciente = function() {
                     border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.22);width:270px;overflow:hidden;
                     z-index:9991;border:1px solid #e2e8f0;">
             <div style="padding:10px 14px;font-weight:800;font-size:11px;color:#64748b;text-transform:uppercase;
-                        letter-spacing:.5px;border-bottom:1px solid #f1f5f9;">
-                Tus conversaciones
+                        letter-spacing:.5px;border-bottom:1px solid #f1f5f9;display:flex;
+                        justify-content:space-between;align-items:center;gap:8px;">
+                <span>Tus conversaciones</span>
+                <button type="button" onclick="document.getElementById('kd-chat-picker-paciente')?.remove()"
+                        title="Cerrar"
+                        style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px;
+                               line-height:1;padding:2px 4px;flex-shrink:0;">✕</button>
             </div>
             ${ordenados.map(a => `
                 <div onclick="document.getElementById('kd-chat-picker-paciente').remove(); window.kdAbrirChatConCentro('${a.centroId}','${_kdChatEscapar(a.centroNombre).replace(/'/g, "\\'")}')"
@@ -949,7 +958,24 @@ window._kdAbrirPickerChatsPaciente = function() {
                 </div>`).join('')}
         </div>
     `);
+
+    // Cerrar también al tocar fuera del recuadro (además del botón ✕),
+    // sin afectar el clic que abre el picker ni los clics de adentro.
+    setTimeout(() => {
+        document.addEventListener('click', _kdCerrarPickerAlTocarFuera);
+    }, 0);
 };
+
+function _kdCerrarPickerAlTocarFuera(e) {
+    const picker = document.getElementById('kd-chat-picker-paciente');
+    if (!picker) {
+        document.removeEventListener('click', _kdCerrarPickerAlTocarFuera);
+        return;
+    }
+    if (picker.contains(e.target) || e.target.closest('#kd-chat-fab-paciente')) return;
+    picker.remove();
+    document.removeEventListener('click', _kdCerrarPickerAlTocarFuera);
+}
 
 /** Arranca (una sola vez por sesión) la escucha de todos los chats activos del paciente */
 function _kdIniciarNotificacionesPaciente() {
