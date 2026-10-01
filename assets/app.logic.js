@@ -20584,8 +20584,19 @@ window.addEventListener('offline', () => {
 
 window.addEventListener('online', () => {
     console.log('[Red] Conexión restaurada');
+    // ¿Estaba la pantalla completa "Sin conexión" (carga inicial sin red)?
+    const _estabaOfflineCompleto = document.getElementById('offline-screen')?.classList.contains('visible');
     _hideOfflineScreen();
     _mostrarBannerOffline(false);
+
+    // _showOfflineScreen() ocultó splash, login y app. Al quitar solo la pantalla offline
+    // quedaba todo en blanco. Como el usuario aún no está dentro, se recarga para
+    // que el sistema arranque normal (nadie pierde datos: no hay sesión activa).
+    if (_estabaOfflineCompleto && !_usuarioActivo()) {
+        console.log('[Red] Recargando para reiniciar el sistema…');
+        setTimeout(() => location.reload(), 800);
+        return;
+    }
 
     // Si estábamos en splash (carga inicial sin red), continuar
     if (!document.getElementById('app-splash')?.classList.contains('hidden')) {
