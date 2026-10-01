@@ -20,9 +20,83 @@
 <meta name="theme-color" content="#b60000">
 
 <script>
+/* ── KuraDoc: registro del Service Worker + aviso de nueva versión ── */
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("service-worker.js");
+  var kdActualizando = false;
+
+  function kdMostrarAvisoActualizacion(aplicar) {
+    if (document.getElementById("kd-aviso-update")) return;
+    var b = document.createElement("div");
+    b.id = "kd-aviso-update";
+    b.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));" +
+      "z-index:2147483647;max-width:440px;margin:0 auto;background:#1f2937;color:#fff;padding:12px 14px;" +
+      "border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.35);display:flex;align-items:center;gap:12px;" +
+      "font:14px/1.3 system-ui,sans-serif";
+    b.innerHTML = '<span style="flex:1">🔄 Hay una nueva versión de KuraDoc disponible.</span>' +
+      '<button id="kd-btn-update" style="background:#2563eb;color:#fff;border:0;border-radius:8px;padding:8px 12px;' +
+      'font-weight:600;cursor:pointer">Actualizar ahora</button>' +
+      '<button id="kd-btn-later" aria-label="Más tarde" style="background:transparent;color:#9ca3af;border:0;' +
+      'font-size:18px;cursor:pointer">✕</button>';
+    document.body.appendChild(b);
+    document.getElementById("kd-btn-update").onclick = function () {
+      this.textContent = "Actualizando…"; this.disabled = true;
+      kdActualizando = true; aplicar();
+    };
+    document.getElementById("kd-btn-later").onclick = function () { b.remove(); };
+  }
+
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("service-worker.js").then(function (reg) {
+      function avisar(sw) {
+        kdMostrarAvisoActualizacion(function () { sw.postMessage({ type: "SKIP_WAITING" }); });
+      }
+      if (reg.waiting && navigator.serviceWorker.controller) avisar(reg.waiting);
+      reg.addEventListener("updatefound", function () {
+        var nuevo = reg.installing;
+        if (!nuevo) return;
+        nuevo.addEventListener("statechange", function () {
+          if (nuevo.state === "installed" && navigator.serviceWorker.controller) avisar(nuevo);
+        });
+      });
+      // Buscar versiones nuevas: al volver a la app y cada 15 minutos
+      function buscar() { reg.update().catch(function () {}); }
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) buscar(); });
+      setInterval(buscar, 15 * 60 * 1000);
+    });
+    // Recarga una sola vez, y solo si el usuario tocó "Actualizar ahora"
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (kdActualizando) window.location.reload();
+    });
+  });
 }
+</script>
+
+<script>
+/* ── KuraDoc: si Firebase no llegó a cargar (p. ej. la página se abrió sin internet),
+      app_logic.js no puede arrancar ni mostrar su pantalla "Sin conexión".
+      Aquí se muestra esa misma pantalla y se recarga sola cuando vuelve la red. ── */
+window.addEventListener("load", function () {
+  var arranco = typeof firebase !== "undefined" && firebase.apps && firebase.apps.length;
+  if (arranco) { try { sessionStorage.removeItem("kdReintentos"); } catch (e) {} return; }
+
+  var n = 0;
+  try { n = parseInt(sessionStorage.getItem("kdReintentos") || "0", 10) || 0; } catch (e) {}
+
+  var pantalla = document.getElementById("offline-screen");
+  if (pantalla) pantalla.classList.add("visible");
+  var splash = document.getElementById("app-splash");
+  if (splash) splash.classList.add("hidden");
+
+  var recargando = false;
+  function auto() {
+    if (recargando || !navigator.onLine || n >= 5) return;
+    recargando = true;
+    try { sessionStorage.setItem("kdReintentos", String(n + 1)); } catch (e) {}
+    window.location.reload();
+  }
+  window.addEventListener("online", auto);
+  setInterval(auto, 4000);   // respaldo: algunos celulares no avisan bien cuando vuelve internet
+});
 </script>
 
 
