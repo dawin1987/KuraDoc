@@ -323,6 +323,16 @@ function stopInactivityWatcher() {
                 _hideSplash();
                 return; // No procesar auth normal en modo público
             }
+
+            // ── REGISTRO PROPIO EN CURSO ──────────────────────────────────
+            // createUserWithEmailAndPassword inicia sesión automáticamente y
+            // dispara este listener ANTES de que se escriba el perfil en
+            // Firestore. Sin esta guarda, el listener cerraba la sesión
+            // ("usuario sin perfil") y el formulario quedaba en estado raro.
+            if (window._registrandoPaciente) {
+                console.log('[Auth] Registro propio en curso — evento ignorado.');
+                return;
+            }
             // ──────────────────────────────────────────────────────────────
 
             // ── CASO A: usuario null (cierre de sesión o pérdida de red) ──
@@ -794,8 +804,10 @@ function stopInactivityWatcher() {
 
             // ── Crear cuenta real ─────────────────────────────────
             btn.textContent = 'Creando cuenta...';
+            let userCredential = null;
             try {
-                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                window._registrandoPaciente = true;   // 🔑 el listener de auth ignora este proceso
+                userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 const nombreNorm = nombre.trim().toLowerCase()
                     .normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ');
                 await db.collection('users').doc(userCredential.user.uid).set({
@@ -803,6 +815,7 @@ function stopInactivityWatcher() {
                     email:        email,
                     nombre:       nombre,
                     nombreNorm:   nombreNorm,
+                    palabrasBusqueda: nombreNorm.split(' ').filter(w => w.length >= 2),
                     telefono:     telefono,
                     rol:          'paciente',
                     genero:       genero,
@@ -821,9 +834,26 @@ function stopInactivityWatcher() {
                     usuarioIdTerminos: userCredential.user.uid,
                     nombreUsuarioTerminos: nombre
                 });
-                toggleRegistro();
-                showAlert('loginAlert', '¡Cuenta creada exitosamente! Iniciando sesión...', 'success');
+
+                // ── Éxito: cerrar sesión, limpiar y llevar al login ──────────
+                await auth.signOut();                                   // el usuario inicia sesión él mismo
+                document.getElementById('registerForm').reset();
+                const _ra = document.getElementById('regAlerta');
+                if (_ra) { _ra.innerHTML = ''; _ra.style.display = 'none'; }
+                document.getElementById('registerModal').classList.add('hidden');   // cierre explícito (NO toggle)
+                document.getElementById('loginPage')?.classList.remove('hidden');
+                document.getElementById('mainApp')?.classList.add('hidden');
+                document.body.classList.add('app-not-logged');
+                const _le = document.getElementById('loginEmail');
+                if (_le) _le.value = email;                             // solo el correo; la clave la escribe
+                const _lp = document.getElementById('loginPassword');
+                if (_lp) { _lp.value = ''; setTimeout(() => _lp.focus(), 150); }
+                mostrarModalRegistroExitoso(nombre);
             } catch (error) {
+                // Evitar cuenta huérfana: existe en Auth pero no se pudo guardar el perfil
+                if (userCredential && error.code !== 'auth/email-already-in-use') {
+                    try { await userCredential.user.delete(); } catch (_) {}
+                }
                 if (error.code === 'auth/email-already-in-use') {
                     _resaltarCampoError('regEmail');
                     mostrarAlertaRegistro('regAlerta','error',
@@ -835,9 +865,42 @@ function stopInactivityWatcher() {
                         'Error al crear la cuenta: ' + error.message);
                 }
             } finally {
+                // Pequeño margen para que el evento de signOut() ya haya sido ignorado
+                setTimeout(() => { window._registrandoPaciente = false; }, 800);
                 btn.disabled=false; btn.textContent='Crear Cuenta';
             }
         });
+
+        // ── Modal sutil de registro exitoso ──────────────────────
+        function mostrarModalRegistroExitoso(nombre) {
+            document.getElementById('modalRegistroExitoso')?.remove();
+            const safe = String(nombre || '').replace(/[<>&"]/g, '');
+            const d = document.createElement('div');
+            d.id = 'modalRegistroExitoso';
+            d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:100000;padding:16px;';
+            d.innerHTML = `
+              <div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:340px;width:100%;text-align:center;
+                          box-shadow:0 12px 40px rgba(0,0,0,.22);animation:fadeInAlert .3s ease;">
+                <div style="font-size:44px;line-height:1;">✅</div>
+                <h3 style="margin:10px 0 6px;color:#0f172a;font-size:18px;">¡Cuenta creada con éxito!</h3>
+                <p style="font-size:13px;color:#64748b;margin:0 0 16px;line-height:1.5;">
+                  ${safe ? '<strong>' + safe + '</strong>, tu' : 'Tu'} cuenta fue registrada.<br>
+                  Inicia sesión con el correo y la clave que acabas de crear.
+                </p>
+                <button type="button" id="btnRegistroExitosoOk"
+                  style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);
+                         color:#fff;font-weight:700;font-size:14px;cursor:pointer;">Ir a iniciar sesión</button>
+              </div>`;
+            const cerrar = () => {
+                d.remove();
+                const lp = document.getElementById('loginPassword');
+                if (lp) lp.focus();
+            };
+            d.addEventListener('click', e => { if (e.target === d) cerrar(); });
+            document.body.appendChild(d);
+            document.getElementById('btnRegistroExitosoOk').onclick = cerrar;
+            setTimeout(() => { if (document.body.contains(d)) cerrar(); }, 8000);
+        }
 
         // ── Auto-formato fecha dd-mm-aaaa + cálculo de edad ──────
         // Calcula edad como NÚMERO PURO (sin texto) a partir de dd-mm-aaaa
@@ -1025,6 +1088,38 @@ async function loadAllData() {
             refreshCurrentView();
         }, err => console.warn('[users]', err.code));
         activeListeners.push(unsubUsers);
+
+        // ─── 4b. PACIENTES RECIENTES (en vivo, solo 20) ────────────
+        // Costo: 20 lecturas al iniciar + 1 por cada paciente nuevo.
+        // No crece con la cantidad de usuarios registrados.
+        if (rol === 'secretaria' || rol === 'medico' || rol === 'admin') {
+            let _primerSnapPac = true;
+            const unsubPacRec = db.collection('users')
+                .where('rol', '==', 'paciente')
+                .orderBy('fechaCreacion', 'desc')
+                .limit(20)
+                .onSnapshot(snap => {
+                    const lista = snap.docs.map(d => ({ id: d.id, uid: d.id, ...d.data() }));
+                    appState._pacientesRecientes = lista;
+                    const conocidos = new Set((appState.pacientesDB || []).map(p => p.uid || p.id));
+                    mezclarPacientesEnEstado(lista);
+                    if (!_primerSnapPac) {
+                        // Marcar como NUEVO solo a los que llegan en vivo y son de hoy
+                        snap.docChanges().forEach(ch => {
+                            if (ch.type !== 'added' || conocidos.has(ch.doc.id)) return;
+                            const p = (appState.pacientesDB || []).find(x => x.uid === ch.doc.id);
+                            if (p && (Date.now() - _pacFecha(p)) < 86400000) p._recienRegistrado = true;
+                        });
+                    }
+                    _primerSnapPac = false;
+                    if (appState.currentView === 'pacientes' && !appState.filtroSoloMisPacientes
+                        && !appState.cargandoPacientes
+                        && document.getElementById('contenedor-lista-pacientes')) {
+                        renderListaPacientesSolo();
+                    }
+                }, err => console.warn('[pacientesRecientes]', err.code || err.message));
+            activeListeners.push(unsubPacRec);
+        }
 
         // ─── 5. CITAS con LIMIT ───────────────────────────────────
         // Admin/secretaria: carga las más recientes; médico/paciente: solo las suyas
@@ -6028,7 +6123,13 @@ async function cargarPacientesDesdeDB(reiniciar = false) {
         appState.ultimoDocPaciente = snapshot.docs[snapshot.docs.length - 1];
         
         // Actualizamos el array global en appState
-        appState.pacientesDB = [...appState.pacientesDB, ...nuevos];
+        // Evitar duplicados con pacientes ya mezclados (búsqueda en BD / listener de recientes)
+        const _yaIds = new Set(appState.pacientesDB.map(p => p.uid || p.id));
+        appState.pacientesDB = [...appState.pacientesDB, ...nuevos.filter(p => !_yaIds.has(p.uid))];
+        // Al reiniciar, reincorporar los 20 más recientes (listener en vivo)
+        if (reiniciar && typeof mezclarPacientesEnEstado === 'function') {
+            mezclarPacientesEnEstado(appState._pacientesRecientes || []);
+        }
 
         // Mostramos el botón "Cargar más" solo si trajo 50 (lo que indica que puede haber más)
         const loadMoreBtn = document.getElementById('load-more-container');
@@ -6064,16 +6165,93 @@ function renderBuscadorPacientes() {
 
     // ── El buscador SIEMPRE va solo, en su propia fila ──────────
     container.innerHTML = `
-        <input type="text" id="inputBusquedaPacientes"
-               placeholder="${isMobile ? '🔍 Buscar paciente...' : 'Buscar por nombre, cédula o teléfono...'}"
-               class="form-control search-input"
-               value="${appState.filtroBusquedaPacientes || ''}"
-               oninput="appState.filtroBusquedaPacientes = this.value; renderListaPacientesSolo();"
-               style="width:100%; box-sizing:border-box; outline:none;
-                      padding:${isMobile ? '11px 14px 11px 30px' : '8px 8px 8px 30px'};
-                      font-size:${isMobile ? '14px' : '13px'};
-                      border:1px solid #e2e8f0; border-radius:8px;">
+        <div id="pac-modo-wrap" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+            <span style="font-size:11px;color:#64748b;font-weight:600;">Buscar por:</span>
+            <button type="button" data-modo="general" onclick="_setModoBusqDir('general')"
+                    style="border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;">Nombre · Cédula · Teléfono</button>
+            <button type="button" data-modo="record" onclick="_setModoBusqDir('record')"
+                    style="border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;">🗂 Nº de récord</button>
+        </div>
+<div style="position:relative;width:100%;">
+    <input 
+        type="text"
+        id="inputBusquedaPacientes"
+        placeholder="Buscar por nombre, cédula o teléfono..."
+        class="form-control search-input"
+        value=""
+        oninput="
+            appState.filtroBusquedaPacientes = this.value;
+            renderListaPacientesSolo();
+            _actualizarBtnBuscarBD();
+
+            document.getElementById('btnLimpiarBusquedaPacientes').style.display =
+                this.value.trim() !== '' ? 'flex' : 'none';
+        "
+        style="
+            width:100%;
+            box-sizing:border-box;
+            outline:none;
+            padding:8px 38px 8px 30px;
+            font-size:13px;
+            border:1px solid #e2e8f0;
+            border-radius:8px;
+        "
+    >
+
+    <button
+        type="button"
+        id="btnLimpiarBusquedaPacientes"
+        title="Limpiar búsqueda"
+        onclick="
+            const input = document.getElementById('inputBusquedaPacientes');
+
+            input.value = '';
+
+            appState.filtroBusquedaPacientes = '';
+
+            renderListaPacientesSolo();
+
+            _actualizarBtnBuscarBD();
+
+            this.style.display = 'none';
+
+            input.focus();
+        "
+        style="
+            display:none;
+            position:absolute;
+            right:8px;
+            top:50%;
+            transform:translateY(-50%);
+            width:22px;
+            height:22px;
+            align-items:center;
+            justify-content:center;
+            border:none;
+            border-radius:50%;
+            background:#e2e8f0;
+            color:#64748b;
+            font-size:16px;
+            font-weight:700;
+            line-height:1;
+            cursor:pointer;
+            padding:0;
+        "
+    >×</button>
+</div>
+
+      
+        <div id="pac-bd-wrap" style="display:none; align-items:center; gap:10px; flex-wrap:wrap; margin-top:6px;">
+            <button type="button" id="pac-bd-btn" onclick="buscarEnBDDirectorio()"
+                    style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:8px;
+                           padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+                🔎 Buscar
+            </button>
+            <span id="pac-bd-msg" style="font-size:11px;color:#64748b;"></span>
+        </div>
     `;
+    _pintarModoDir();
+    _actualizarBtnBuscarBD();
 
     // ── Todos / Mis Pacientes: fila de abajo, junto a Nuevo Paciente ──
     if (filtrosContainer) {
@@ -6121,12 +6299,8 @@ function renderListaPacientesSolo() {
 
     // 🔍 Búsqueda manual
     if (appState.filtroBusquedaPacientes) {
-        const busq = appState.filtroBusquedaPacientes.toLowerCase();
-        pacientesMostrar = pacientesMostrar.filter(p => 
-            (p.nombre?.toLowerCase().includes(busq)) || 
-            (p.cedula?.includes(busq)) || 
-            (p.telefono?.includes(busq))
-        );
+        const busq = appState.filtroBusquedaPacientes;
+        pacientesMostrar = pacientesMostrar.filter(p => _pacMatchModo(p, busq, appState.pacModoDir));
     }
 
     // ── Ordenar ──
@@ -6144,6 +6318,10 @@ function renderListaPacientesSolo() {
             <div style="text-align:center;padding:60px 20px;color:#94a3b8;">
                 <div style="font-size:48px;margin-bottom:12px;opacity:.35;">🔍</div>
                 <div style="font-size:14px;font-weight:600;">No se encontraron pacientes que coincidan con la búsqueda.</div>
+                ${((appState.filtroBusquedaPacientes || '').trim().length >= _minBusqBD(appState.pacModoDir) && !appState.filtroSoloMisPacientes)
+                    ? `<div style="font-size:12px;margin-top:8px;">¿Es un paciente recién registrado? Pulsa
+                       <strong>🔎 Buscar en la base de datos</strong> para consultarlo.</div>`
+                    : ''}
             </div>`;
         return;
     }
@@ -8868,6 +9046,7 @@ document.getElementById('formNuevoPacienteSecretaria').addEventListener('submit'
             email:        email,
             nombre:       nombre,
             nombreNorm:   _secNombreNorm,
+            palabrasBusqueda: _secNombreNorm.split(' ').filter(w => w.length >= 2),
             telefono:     telefono,
             rol:          'paciente',
             genero:       genero,
@@ -8922,6 +9101,7 @@ document.getElementById('formNuevoPacienteSecretaria').addEventListener('submit'
         // Insertar AL INICIO de pacientesDB para que salga primero en la lista
         if (!appState.pacientesDB) appState.pacientesDB = [];
         appState.pacientesDB = [nuevoPacienteObj, ...appState.pacientesDB.filter(p => p.uid !== uid)];
+        window._ultimoPacRegUid = uid;   // usado por Nueva Cita para auto-seleccionarlo
 
         // También añadir a appState.users para que abrirFichaPaciente lo encuentre
         if (!appState.users) appState.users = [];
@@ -19413,6 +19593,325 @@ window._uGet = function(id) {
     return null;
 };
 
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  BÚSQUEDA DE PACIENTES — local + servidor (híbrida, bajo costo)  ║
+// ╚══════════════════════════════════════════════════════════════════╝
+// Índices compuestos que Firestore pedirá la primera vez (la consola
+// de errores trae el enlace directo para crearlos):
+//   users: rol ASC + nombreNorm ASC
+//   users: rol ASC + cedula ASC
+//   users: rol ASC + telefono ASC
+//   (opcional, récord) Collection group "records": numeroRecord ASC
+//   + regla de seguridad para collectionGroup('records')
+
+window._pacNorm = function(s) {
+    return String(s || '').toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ').trim();
+};
+
+window._pacFecha = function(p) {
+    const f = p && p.fechaCreacion;
+    if (!f) return 0;
+    if (typeof f.toDate === 'function') return f.toDate().getTime();
+    const d = new Date(f);
+    return isNaN(d) ? 0 : d.getTime();
+};
+
+// Coincidencia local: sin tildes/mayúsculas, cédula/teléfono con o sin guiones
+window._pacMatch = function(p, q) {
+    const qn = _pacNorm(q);
+    if (!qn) return true;
+    if ((p.nombreNorm || _pacNorm(p.nombre)).includes(qn)) return true;
+    if (p._numeroRecord && _pacNorm(p._numeroRecord) === qn) return true;
+    if (p.expedienteClinico && _pacNorm(p.expedienteClinico).includes(qn)) return true;
+    const soloNum = /^[\d\-\s()+]+$/.test(q);
+    const dig = String(q).replace(/\D/g, '');
+    if (soloNum && dig.length >= 1) {
+        if (String(p.cedula   || '').replace(/\D/g, '').includes(dig)) return true;
+        if (String(p.telefono || '').replace(/\D/g, '').includes(dig)) return true;
+    }
+    if ((p.cedula || '').toLowerCase().includes(String(q).toLowerCase())) return true;
+    if ((p.telefono || '').includes(q)) return true;
+    return false;
+};
+
+// Mezcla pacientes en appState.pacientesDB y appState.users SIN duplicar
+window.mezclarPacientesEnEstado = function(lista) {
+    if (!lista || !lista.length) return [];
+    appState.pacientesDB = appState.pacientesDB || [];
+    appState.users       = appState.users       || [];
+    const mapDB = new Map(), mapUs = new Map();
+    appState.pacientesDB.forEach(p => { if (p.uid) mapDB.set(p.uid, p); if (p.id) mapDB.set(p.id, p); });
+    appState.users.forEach(p =>       { if (p.uid) mapUs.set(p.uid, p); if (p.id) mapUs.set(p.id, p); });
+    const nuevosIds = [];
+    lista.forEach(p => {
+        const id = p.uid || p.id;
+        if (!id) return;
+        const n = Object.assign({}, p, { uid: id, id: id });
+        let ref = mapDB.get(id);
+        if (ref) {
+            const flag = ref._recienRegistrado;
+            Object.assign(ref, n);
+            if (flag) ref._recienRegistrado = true;
+        } else {
+            ref = n;
+            appState.pacientesDB.push(ref);
+            mapDB.set(id, ref);
+            nuevosIds.push(id);
+        }
+        const u = mapUs.get(id);
+        if (!u) { appState.users.push(ref); mapUs.set(id, ref); }
+        else if (u !== ref) Object.assign(u, ref);
+    });
+    if (typeof _rebuildUsersMap === 'function') _rebuildUsersMap();
+    return nuevosIds;
+};
+
+// Búsqueda en Firestore: pocas lecturas (limit), por prefijo/índice.
+// Nunca descarga la colección completa.
+window.buscarPacientesServidor = async function(texto, max, modo) {
+    max = max || 10;
+    const q = String(texto || '').trim();
+    const res = []; res.errores = [];
+    if (modo === 'record') return buscarPacientesPorRecord(q, max);   // modo opcional: número de récord
+    if (q.length < 3) return res;
+
+    const norm   = _pacNorm(q);
+    const dig    = q.replace(/\D/g, '');
+    const soloNum = /^[\d\-\s()+]+$/.test(q);
+    const base   = () => db.collection('users').where('rol', '==', 'paciente');
+    const tareas = [];
+    const add = (etq, promesa) => tareas.push(
+        promesa
+            .then(s => s.docs.map(d => ({ id: d.id, uid: d.id, ...d.data() })))
+            .catch(e => {
+                res.errores.push(etq + ': ' + (e.code || e.message));
+                console.warn('[BuscarPacientes]', etq, e.message);
+                return [];
+            })
+    );
+
+    if (!soloNum) {
+        // Nombre por prefijo
+        add('nombre', base().orderBy('nombreNorm').startAt(norm).endAt(norm + '\uf8ff').limit(max).get());
+        // Última palabra (apellido) — solo pacientes que tengan palabrasBusqueda
+        const pal = norm.split(' ').filter(w => w.length >= 3);
+        if (pal.length) add('palabra', base().where('palabrasBusqueda', 'array-contains', pal[pal.length - 1]).limit(max).get());
+    } else if (dig.length >= 3) {
+        const ced = formatearCedula(dig);
+        const tel = formatearTelefono(dig);
+        add('cedula',   base().orderBy('cedula').startAt(ced).endAt(ced + '\uf8ff').limit(max).get());
+        add('telefono', base().orderBy('telefono').startAt(tel).endAt(tel + '\uf8ff').limit(max).get());
+    }
+
+    const grupos = await Promise.all(tareas);
+    const mapa = new Map();
+    grupos.forEach(g => g.forEach(p => mapa.set(p.uid, Object.assign(mapa.get(p.uid) || {}, p))));
+    mapa.forEach(p => res.push(p));
+    mezclarPacientesEnEstado(res);
+    return res;
+};
+
+
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  NÚMERO DE RÉCORD EN LA BÚSQUEDA (modo opcional + visible)       ║
+// ╚══════════════════════════════════════════════════════════════════╝
+// El récord es POR CENTRO (users/{id}/records/{recId}). Para poder buscarlo
+// y mostrarlo sin leer subcolecciones, se copia al perfil del paciente en
+//   users/{id}.recordsPorCentro.{centroId} = "numero"
+// (lo hace guardarRecord; para récords antiguos: migrarRecordsAUsuarios()).
+window._pacRecCache = window._pacRecCache || new Map();   // "centroId|uid" -> "numero" ('' = sin récord)
+
+window._pacRecGet = function(p) {
+    const uid = p && (p.uid || p.id);
+    const cid = (typeof _getCentroIdUsuario === 'function') ? _getCentroIdUsuario() : null;
+    if (!cid) return (p && p._numeroRecord) || undefined;
+    const k = cid + '|' + uid;
+    if (_pacRecCache.has(k)) return _pacRecCache.get(k);
+    const d = p && p.recordsPorCentro && p.recordsPorCentro[cid];
+    if (d) return String(d);
+    if (p && p._numeroRecord) return String(p._numeroRecord);
+    return undefined;   // desconocido
+};
+
+window._minBusqBD = function(modo) { return modo === 'record' ? 1 : 3; };
+
+// Coincidencia según el modo elegido por el usuario
+window._pacMatchModo = function(p, q, modo) {
+    if (modo !== 'record') return _pacMatch(p, q);
+    const qn = _pacNorm(q);
+    if (!qn) return true;
+    const rec = _pacRecGet(p);
+    return !!rec && _pacNorm(rec).includes(qn);
+};
+
+// Chip de récord para filas de resultados (se completa solo si aún no se conoce)
+window._pacRecPintar = function(el, v) {
+    if (!el) return;
+    if (v) {
+        el.style.cssText = 'display:inline-block;margin-left:6px;background:#1e3a52;color:#fff;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700;vertical-align:middle;white-space:nowrap;';
+        el.textContent = '🗂 Rec. ' + v;
+    } else if (v === '') {
+        el.style.cssText = 'display:inline-block;margin-left:6px;color:#f59e0b;font-size:9px;font-weight:600;vertical-align:middle;white-space:nowrap;';
+        el.textContent = 'Sin récord';
+    }
+};
+window._pacRecInline = function(p) {
+    const cid = (typeof _getCentroIdUsuario === 'function') ? _getCentroIdUsuario() : null;
+    if (!cid) return '';
+    const uid = String(p.uid || p.id || '').replace(/[^\w-]/g, '');
+    const v = _pacRecGet(p);
+    const tmp = document.createElement('span');
+    tmp.className = 'pac-rec';
+    tmp.setAttribute('data-uid', uid);
+    _pacRecPintar(tmp, v);
+    return tmp.outerHTML;
+};
+window._pacRecCargar = function(lista) {
+    const cid = (typeof _getCentroIdUsuario === 'function') ? _getCentroIdUsuario() : null;
+    if (!cid || !lista) return;
+    window._pacRecEnVuelo = window._pacRecEnVuelo || new Set();
+    lista.slice(0, 25).forEach(p => {
+        const uid = p.uid || p.id;
+        if (!uid || _pacRecGet(p) !== undefined || _pacRecEnVuelo.has(uid)) return;
+        _pacRecEnVuelo.add(uid);
+        getRecordPorCentro(uid, cid).then(r => {
+            const v = r && r.numeroRecord ? String(r.numeroRecord) : '';
+            document.querySelectorAll('.pac-rec[data-uid="' + uid + '"]').forEach(el => _pacRecPintar(el, v));
+        }).catch(() => {}).finally(() => _pacRecEnVuelo.delete(uid));
+    });
+};
+
+// Búsqueda de pacientes por número de récord (exacto) en el servidor
+window.buscarPacientesPorRecord = async function(texto, max) {
+    max = max || 10;
+    const q = String(texto || '').trim();
+    const res = []; res.errores = [];
+    if (!q) return res;
+    const cid = (typeof _getCentroIdUsuario === 'function') ? _getCentroIdUsuario() : null;
+    const mapa = new Map();
+    const marcar = (p) => {
+        if (cid) _pacRecCache.set(cid + '|' + p.uid, q);
+        mapa.set(p.uid, Object.assign(mapa.get(p.uid) || {}, p, { _numeroRecord: q }));
+    };
+
+    // 1) Campo copiado al perfil (rápido, sin índices compuestos)
+    if (cid) {
+        try {
+            const s = await db.collection('users').where('rol', '==', 'paciente')
+                .where('recordsPorCentro.' + cid, '==', q).limit(max).get();
+            s.docs.forEach(d => marcar({ id: d.id, uid: d.id, ...d.data() }));
+        } catch (e) {
+            res.errores.push('recordsPorCentro: ' + (e.code || e.message));
+            console.warn('[BuscarRecord] perfil:', e.message);
+        }
+    }
+
+    // 2) Respaldo para récords antiguos aún no copiados al perfil
+    //    (requiere índice de collection group + regla; si no, se omite)
+    if (!mapa.size) {
+        try {
+            let ref = db.collectionGroup('records').where('numeroRecord', '==', q);
+            if (cid) ref = ref.where('centroId', '==', cid);
+            const s = await ref.limit(5).get();
+            const ids = [...new Set(s.docs.map(d => d.ref.parent.parent && d.ref.parent.parent.id).filter(Boolean))];
+            for (const id of ids) {
+                const ud = await db.collection('users').doc(id).get();
+                if (ud.exists && ud.data().rol === 'paciente') {
+                    marcar({ id: ud.id, uid: ud.id, ...ud.data() });
+                    // auto-reparar: copiar el récord al perfil para la próxima vez
+                    if (cid) db.collection('users').doc(id).update({ ['recordsPorCentro.' + cid]: q }).catch(() => {});
+                }
+            }
+        } catch (e) {
+            console.warn('[BuscarRecord] collectionGroup omitido (' + (e.code || 'error') + '):\n' + e.message);
+        }
+    }
+
+    mapa.forEach(p => res.push(p));
+    mezclarPacientesEnEstado(res);
+    return res;
+};
+
+// Migración única (admin): copia los récords existentes al perfil del paciente.
+// Uso: abrir la consola del navegador con sesión de admin y ejecutar  migrarRecordsAUsuarios()
+window.migrarRecordsAUsuarios = async function() {
+    if (appState.currentUserData?.rol !== 'admin') { console.warn('Solo admin.'); return; }
+    let ultimo = null, pacientes = 0, copiados = 0;
+    for (;;) {
+        let q = db.collection('users').where('rol', '==', 'paciente').orderBy('__name__').limit(200);
+        if (ultimo) q = q.startAfter(ultimo);
+        const snap = await q.get();
+        if (snap.empty) break;
+        for (const d of snap.docs) {
+            pacientes++;
+            const rs = await d.ref.collection('records').get();
+            if (rs.empty) continue;
+            const upd = {};
+            rs.docs.forEach(r => { const x = r.data(); if (x.centroId && x.numeroRecord) upd['recordsPorCentro.' + x.centroId] = String(x.numeroRecord).trim(); });
+            if (Object.keys(upd).length) { await d.ref.update(upd); copiados += Object.keys(upd).length; }
+        }
+        ultimo = snap.docs[snap.docs.length - 1];
+        console.log('[Migración récords] pacientes revisados:', pacientes, '— récords copiados:', copiados);
+    }
+    console.log('[Migración récords] ✅ Terminado. Pacientes:', pacientes, 'Récords:', copiados);
+};
+
+// ── Selector de modo en el Directorio ──
+window._pintarModoDir = function() {
+    const modo = appState.pacModoDir || 'general';
+    document.querySelectorAll('#pac-modo-wrap button[data-modo]').forEach(b => {
+        const on = b.getAttribute('data-modo') === modo;
+        b.style.background = on ? '#21489c' : '#e2e8f0';
+        b.style.color      = on ? '#fff'    : '#64748b';
+    });
+    const inp = document.getElementById('inputBusquedaPacientes');
+    if (inp) inp.placeholder = modo === 'record' ? 'Número de récord (exacto)...'
+        : (window.innerWidth <= 640 ? '🔍 Buscar paciente...' : 'Buscar por nombre, cédula o teléfono...');
+};
+window._setModoBusqDir = function(modo) {
+    appState.pacModoDir = modo;
+    _pintarModoDir();
+    if (modo === 'record') _pacRecCargar((appState.pacientesDB || []).slice(0, 25));
+    renderListaPacientesSolo();
+    _actualizarBtnBuscarBD();
+    const m = document.getElementById('pac-bd-msg');
+    if (m) m.textContent = '';
+    const inp = document.getElementById('inputBusquedaPacientes');
+    if (inp) inp.focus();
+};
+
+// ── Directorio: botón "Buscar en la base de datos" ───────────────
+window._actualizarBtnBuscarBD = function() {
+    const w = document.getElementById('pac-bd-wrap');
+    if (!w) return;
+    const t = (appState.filtroBusquedaPacientes || '').trim();
+    const minL = _minBusqBD(appState.pacModoDir);
+    w.style.display = (t.length >= minL && !appState.filtroSoloMisPacientes) ? 'flex' : 'none';
+    const m = document.getElementById('pac-bd-msg');
+    if (m && t.length < minL) m.textContent = '';
+};
+
+window.buscarEnBDDirectorio = async function() {
+    const t   = (appState.filtroBusquedaPacientes || '').trim();
+    const btn = document.getElementById('pac-bd-btn');
+    const msg = document.getElementById('pac-bd-msg');
+    const modo = appState.pacModoDir || 'general';
+    if (t.length < _minBusqBD(modo)) { if (msg) msg.textContent = 'Escribe al menos ' + _minBusqBD(modo) + ' caracter' + (_minBusqBD(modo) > 1 ? 'es' : '') + '.'; return; }
+    if (btn) { btn.disabled = true; btn.textContent = '🔍 Buscando…'; }
+    if (msg) msg.textContent = '';
+    let res = [];
+    try { res = await buscarPacientesServidor(t, 15, modo); } catch (e) { console.warn(e); }
+    if (btn) { btn.disabled = false; btn.textContent = '🔎 Buscar en la base de datos'; }
+    renderListaPacientesSolo();   // los resultados ya fueron mezclados en pacientesDB
+    if (msg) {
+        if (res.length) msg.textContent = '✅ ' + res.length + ' coincidencia' + (res.length !== 1 ? 's' : '') + ' encontrada' + (res.length !== 1 ? 's' : '') + ' en la base de datos.';
+        else if (res.errores && res.errores.length) msg.textContent = '⚠️ No se pudo completar la búsqueda (puede faltar un índice). Revisa la consola.';
+        else msg.textContent = modo === 'record' ? 'Ningún paciente tiene ese número de récord en este centro.' : 'Sin coincidencias en la base de datos.';
+    }
+};
+
 // ── Lazy-load de pacientes desde IDs en citas ────────────────────
 // Extrae IDs de pacientes en appState.citas, filtra los que ya
 // están en memoria y descarga por lotes de 30 (límite whereIn)
@@ -23107,6 +23606,27 @@ window.guardarRecord = async function(pacienteId, centroId, centroNombre, numero
     }
 };
 
+// ─── 2b. Caché de récords + copia al perfil (para buscar por récord) ───
+(function () {
+    const _get = window.getRecordPorCentro;
+    window.getRecordPorCentro = async function (pid, cid) {
+        const r = await _get(pid, cid);
+        if (pid && cid && window._pacRecCache) _pacRecCache.set(cid + '|' + pid, r && r.numeroRecord ? String(r.numeroRecord) : '');
+        return r;
+    };
+    const _guardar = window.guardarRecord;
+    window.guardarRecord = async function (pid, cid, cnombre, num) {
+        const r = await _guardar(pid, cid, cnombre, num);
+        if (r && pid && cid && num) {
+            const n = String(num).trim();
+            if (window._pacRecCache) _pacRecCache.set(cid + '|' + pid, n);
+            try { await db.collection('users').doc(pid).update({ ['recordsPorCentro.' + cid]: n }); }
+            catch (e) { console.warn('[Records] No se pudo copiar el récord al perfil:', e.message); }
+        }
+        return r;
+    };
+})();
+
 // ─── 3. Asignar récord a una cita (helper) ────────────────────────
 window.asignarRecordACita = async function(citaId, numeroRecord) {
     if (!citaId) return;
@@ -23530,7 +24050,14 @@ window._mostrarToast = function(mensaje, tipo = 'success') {
 // Llena los chips de récord en las tarjetas del directorio de pacientes
 window._cargarRecordEnTarjeta = async function(pacienteId, centroId, spanId) {
     if (!centroId || !pacienteId) return;
-    const r = await getRecordPorCentro(pacienteId, centroId);
+    const _k = centroId + '|' + pacienteId;
+    let r;
+    if (window._pacRecCache && _pacRecCache.has(_k)) {      // ya conocido: sin lectura extra
+        const _v = _pacRecCache.get(_k);
+        r = _v ? { numeroRecord: _v } : null;
+    } else {
+        r = await getRecordPorCentro(pacienteId, centroId);
+    }
     const span = document.getElementById(spanId);
     if (!span) return;
     if (r?.numeroRecord) {
@@ -23902,6 +24429,7 @@ var N={pac:null,med:null,f:null,t:null,tipo:'primera-vez',nav:new Date()};
 window.abrirModalNuevaCitaInteligente=function(){
   N.pac=null;N.med=null;N.f=null;N.t=null;N.tipo='primera-vez';N.nav=new Date();
   var i=document.getElementById('nci-pi');if(i)i.value='';
+  if(window._nciInitModo)window._nciInitModo();
   var pc=document.getElementById('nci-pcard');if(pc)pc.innerHTML='';
   var dd=document.getElementById('nci-drop');if(dd)dd.style.display='none';
   var ml=document.getElementById('nci-mlist');if(ml)ml.classList.remove('on');
@@ -23934,10 +24462,8 @@ window.nciBP=function(q){
   });
   var b=(q||'').trim().toLowerCase();
   var fl=b?pacs.filter(function(p){
-    return (p.nombre||'').toLowerCase().indexOf(b)>-1||
-           (p.cedula||'').indexOf(b)>-1||
-           (p.telefono||'').indexOf(b)>-1;
-  }).slice(0,30):pacs.slice(0,50);
+    return _pacMatchModo(p,b,window._nciModo);
+  }).slice(0,30):pacs.slice().sort(function(x,y){return _pacFecha(y)-_pacFecha(x);}).slice(0,50);
   if(!fl.length){
     dd.style.display='block';
     dd.innerHTML='<div style="padding:11px 12px;font-size:12px;color:#94a3b8;text-align:center;">Sin coincidencias</div>';
@@ -23951,10 +24477,71 @@ window.nciBP=function(q){
     var co=p.genero==='Femenino'?'#be185d':p.genero==='Masculino'?'#1d4ed8':'#374151';
     return '<div class="nci-di" onclick="nciEP(\''+uid+'\')">'+
       '<div class="nci-av" style="background:'+bg+';color:'+co+';">'+ini+'</div>'+
-      '<div><div style="font-size:13px;font-weight:700;color:#0f172a;">'+p.nombre+'</div>'+
+      '<div><div style="font-size:13px;font-weight:700;color:#0f172a;">'+p.nombre+_pacRecInline(p)+'</div>'+
       '<div style="font-size:10px;color:#94a3b8;">'+(p.cedula?p.cedula+' &bull; ':'')+( p.telefono||'')+'</div></div></div>';
   }).join('');
+  _pacRecCargar(fl);   /* completa el récord de los resultados visibles que aún no se conocen */
 };
+
+/* ── Búsqueda híbrida: local al instante + base de datos (debounce, caché 60s) ── */
+(function(){
+  var _local=window.nciBP, _t=null, _cache=new Map(), TTL=60000;
+  window._nciModo='general';
+  var AVISO='<div id="nci-bd" style="padding:9px 12px;font-size:11px;color:#94a3b8;text-align:center;">Buscando en la base de datos\u2026</div>';
+
+  /* selector "Buscar por" (se inserta una sola vez sobre el campo) */
+  window._nciPintarModo=function(){
+    var w=document.getElementById('nci-modo');if(!w)return;
+    w.querySelectorAll('button').forEach(function(b){
+      var on=b.getAttribute('data-modo')===window._nciModo;
+      b.style.background=on?'#21489c':'#e2e8f0';b.style.color=on?'#fff':'#64748b';
+    });
+    var i=document.getElementById('nci-pi');
+    if(i)i.placeholder=window._nciModo==='record'?'N\u00famero de r\u00e9cord (exacto)...':'Nombre, c\u00e9dula o tel\u00e9fono...';
+  };
+  window._nciSetModo=function(m){
+    window._nciModo=m;_nciPintarModo();
+    var i=document.getElementById('nci-pi');
+    if(i){i.focus();window.nciBP(i.value);}
+  };
+  window._nciInitModo=function(){
+    window._nciModo='general';
+    if(!document.getElementById('nci-modo')){
+      var sw=document.querySelector('#nci-ov .nci-sw');
+      if(sw){
+        var d=document.createElement('div');d.id='nci-modo';
+        d.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 6px;';
+        d.innerHTML='<span style="font-size:11px;color:#64748b;font-weight:600;">Buscar por:</span>'+
+          '<button type="button" data-modo="general" onclick="_nciSetModo(\'general\')" style="border:none;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer;">Nombre \u00b7 C\u00e9dula \u00b7 Tel.</button>'+
+          '<button type="button" data-modo="record" onclick="_nciSetModo(\'record\')" style="border:none;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer;">\ud83d\uddc2 N\u00ba de r\u00e9cord</button>';
+        sw.parentNode.insertBefore(d,sw);
+      }
+    }
+    _nciPintarModo();
+  };
+
+  /* b\u00fasqueda h\u00edbrida: local al instante + base de datos (debounce, cach\u00e9 60 s) */
+  window.nciBP=function(q){
+    _local(q);
+    clearTimeout(_t);
+    var t=(q||'').trim(), modo=window._nciModo||'general';
+    if(t.length<_minBusqBD(modo))return;
+    var key=modo+'|'+t.toLowerCase(), hit=_cache.get(key);
+    if(hit&&Date.now()-hit<TTL)return;
+    var dd=document.getElementById('nci-drop');
+    if(dd){
+      if(dd.innerHTML.indexOf('Sin coincidencias')>-1)dd.innerHTML=AVISO;
+      else dd.insertAdjacentHTML('beforeend',AVISO);
+    }
+    _t=setTimeout(async function(){
+      try{await buscarPacientesServidor(t,10,modo);}catch(e){console.warn('[nciBP]',e);}
+      _cache.set(key,Date.now());
+      var av=document.getElementById('nci-bd');if(av)av.remove();
+      var inp=document.getElementById('nci-pi');
+      if(inp&&inp.value.trim()===t&&(window._nciModo||'general')===modo)_local(t);   /* repinta con lo reci\u00e9n tra\u00eddo */
+    },450);
+  };
+})();
 
 window.nciEP=function(uid){
   var p=(_uGet&&_uGet(uid))||(appState.pacientesDB||[]).filter(function(u){return u.uid===uid||u.id===uid;})[0];
@@ -24000,7 +24587,7 @@ window.nciQP=function(){
 };
 
 /* ════ REGISTRO RÁPIDO ════ */
-window.nciNuevoPac=function(){window._nciPend=true;abrirModalNuevoPaciente();};
+window.nciNuevoPac=function(){window._nciPend=true;window._ultimoPacRegUid=null;abrirModalNuevoPaciente();};
 
 /* patch cerrar modal nuevo paciente para auto-seleccionar */
 var _ocOrig=window.cerrarModalNuevoPaciente;
@@ -24010,8 +24597,9 @@ window.cerrarModalNuevoPaciente=function(){
   if(window._nciPend&&ov&&ov.style.display!=='none'){
     window._nciPend=false;
     setTimeout(function(){
+      if(window._ultimoPacRegUid){nciEP(window._ultimoPacRegUid);return;}
       var n=appState.pacientesDB&&appState.pacientesDB[0];
-      if(n)nciEP(n.uid||n.id);
+      if(n&&n._recienRegistrado)nciEP(n.uid||n.id);
     },450);
   }
 };
