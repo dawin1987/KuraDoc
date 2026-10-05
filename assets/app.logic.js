@@ -192,6 +192,8 @@ let _hiddenGraceTimer = null;
 // Para reanudar usaremos loadAllData() que ya recrea listeners y repuebla activeListeners.
 function pauseListenersForInactivity() {
   if (pausedByInactivity) return;
+  // El archivista espera solicitudes sin tocar la pantalla: sus listeners nunca se pausan
+  if (appState && appState.currentUserData && appState.currentUserData.rol === 'archivista') return;
   console.log('[Inactividad] Pausando listeners de Firebase para ahorrar datos.');
   try {
     activeListeners.forEach(unsub => {
@@ -1073,6 +1075,11 @@ async function loadAllData() {
         } else if (rol === 'emergencia') {
             // emergencia: solo médicos para el campo "médico que atendió"
             usersQuery = db.collection('users').where('rol', '==', 'medico');
+        } else if (rol === 'archivista') {
+            // archivista: solo los médicos de SU centro (nunca el staff completo)
+            usersQuery = db.collection('users')
+                .where('rol', '==', 'medico')
+                .where('centroMedicoId', '==', appState.currentUserData.centroMedicoId || '__sin_centro__');
         } else {
             // admin: todo el staff (médicos + secretarias) — pacientes se cargan lazy
             usersQuery = db.collection('users').where('rol', 'in', ['medico', 'secretaria', 'admin', 'bioanalista', 'facturador', 'emergencia']);
@@ -1121,6 +1128,15 @@ async function loadAllData() {
             activeListeners.push(unsubPacRec);
         }
 
+        // ─── ARCHIVISTA: usa su propio módulo (kd_archivo_module.js) ───────
+        // Sus citas y solicitudes se consultan por centro y por fecha desde el
+        // módulo; no necesita la lista global de citas ni los turnos.
+        if (rol === 'archivista') {
+            if (typeof kdArchivoInit === 'function') kdArchivoInit();
+            console.log(`[loadAllData] ${activeListeners.length} listeners activos (rol: archivista)`);
+            return;
+        }
+
         // ─── 5. CITAS con LIMIT ───────────────────────────────────
         // Admin/secretaria: carga las más recientes; médico/paciente: solo las suyas
         let citasBase;
@@ -1164,6 +1180,9 @@ async function loadAllData() {
             refreshCurrentView();
         }, err => console.warn('[turnos]', err.code));
         activeListeners.push(unsubTurnos);
+
+        // Secretaria: estado en vivo de las solicitudes de récord (kd_archivo_module.js)
+        if (rol === 'secretaria' && typeof kdArchivoInit === 'function') kdArchivoInit();
 
         console.log(`[loadAllData] ${activeListeners.length} listeners activos (rol: ${rol})`);
 
@@ -1245,7 +1264,7 @@ function refreshCurrentView() {
 
         // NAVEGACIÓN
         function initializeApp() {
-            const defaultViews = { admin: 'centros', medico: 'agenda', secretaria: 'citas', paciente: 'inicio', emergencia: 'emergencias' };
+            const defaultViews = { admin: 'centros', medico: 'agenda', secretaria: 'citas', paciente: 'inicio', emergencia: 'emergencias', archivista: 'archivo' };
             renderMobileNav();
 
             // ── Restaurar dónde estaba el usuario antes de recargar ────
@@ -1904,6 +1923,9 @@ function renderMobileNav() {
         emergencia: [
             { icon: '🚨', label: 'Sala', view: 'emergencias' },
         ],
+        archivista: [
+            { icon: '🗂️', label: 'Archivo', view: 'archivo' },
+        ],
         paciente: [
             { icon: '🏠', label: 'Inicio', view: 'inicio' },
             { icon: '🔍', label: 'Agendas', view: 'agendas' }, 
@@ -2041,6 +2063,7 @@ function navigateTo(view) {
             renderDashboard(); break;
         case 'anuncios-admin': renderAnunciosAdmin(); break;
         case 'emergencias': renderEmergencias(); break;
+        case 'archivo': if (typeof renderArchivo === 'function') renderArchivo(); break;
     }
 }
 
@@ -4230,6 +4253,7 @@ function renderItemCitaTemplate(c, tipo) {
                                Record:  ${c.numeroRecord}
                            </span>`
                         : ''}
+                   
                     </div>
                    
                 </div>
@@ -4264,6 +4288,7 @@ function renderItemCitaTemplate(c, tipo) {
                                    transition:all .3s;">
                         ${textoBoton}
                     </button>
+  ${typeof kdArchivoChip === 'function' ? kdArchivoChip(c) : ''}
                 </div>
                 
             </div>`;
@@ -18544,6 +18569,10 @@ function renderPersonalAdmin() {
                     style="padding:7px 16px;border-radius:8px;border:2px solid #e2e8f0;background:white;color:#475569;cursor:pointer;font-size:12px;font-weight:700;">
                     🚨 Emergencia
                 </button>
+                <button id="btn-filtro-archivista" onclick="setFiltroRolPersonal('archivista')"
+                    style="padding:7px 16px;border-radius:8px;border:2px solid #e2e8f0;background:white;color:#475569;cursor:pointer;font-size:12px;font-weight:700;">
+                    🗂️ Archivo
+                </button>
             </div>
         </div>
 
@@ -18567,7 +18596,7 @@ function renderPersonalAdmin() {
 async function cargarPersonalAdmin() {
     try {
         const snap = await db.collection('users')
-            .where('rol', 'in', ['facturador', 'bioanalista', 'emergencia'])
+            .where('rol', 'in', ['facturador', 'bioanalista', 'emergencia', 'archivista'])
             .get();
         window._personalData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         filtrarPersonal();
@@ -18577,7 +18606,7 @@ async function cargarPersonalAdmin() {
             const snap = await db.collection('users').get();
             window._personalData = snap.docs
                 .map(d => ({ id: d.id, ...d.data() }))
-                .filter(u => u.rol === 'facturador' || u.rol === 'bioanalista' || u.rol === 'emergencia');
+                .filter(u => u.rol === 'facturador' || u.rol === 'bioanalista' || u.rol === 'emergencia' || u.rol === 'archivista');
             filtrarPersonal();
         } catch (e2) {
             document.getElementById('personal-grid').innerHTML = `
@@ -18629,6 +18658,7 @@ window.setFiltroRolPersonal = function(rol) {
         'facturador':   'btn-filtro-facturador',
         'bioanalista':  'btn-filtro-bioanalista',
         'emergencia':   'btn-filtro-emergencia',
+        'archivista':   'btn-filtro-archivista',
     };
     Object.entries(conf).forEach(([r, id]) => {
         const btn = document.getElementById(id);
@@ -18647,12 +18677,16 @@ function _renderTarjetaPersonal(u) {
     const centro  = appState.centrosMedicos?.find(c => c.id === u.centroMedicoId);
     const rolConf = u.rol === 'facturador'
         ? { icon:'🧾', label:'Facturador',        bg:'#eff6ff', color:'#1e40af', dot:'#3b82f6' }
+        : u.rol === 'archivista'
+        ? { icon:'🗂️', label:'Archivista',         bg:'#f5f3ff', color:'#5b21b6', dot:'#7c3aed' }
         : u.rol === 'emergencia'
         ? { icon:'🚨', label:'Usuario Emergencia', bg:'#fff1f2', color:'#9f1239', dot:'#e11d48' }
         : { icon:'🔬', label:'Bioanalista',        bg:'#f0fdf4', color:'#065f46', dot:'#059669' };
     const avatar  = (u.nombre || '?').trim().split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
     const bgAvatar= u.rol === 'facturador'
         ? 'linear-gradient(135deg,#3b82f6,#1e40af)'
+        : u.rol === 'archivista'
+        ? 'linear-gradient(135deg,#7c3aed,#4c1d95)'
         : u.rol === 'emergencia'
         ? 'linear-gradient(135deg,#e11d48,#9f1239)'
         : 'linear-gradient(135deg,#059669,#064e3b)';
@@ -18769,6 +18803,7 @@ window.abrirModalNuevoPersonal = function() {
                             <option value="facturador">🧾 Facturador</option>
                             <option value="bioanalista">🔬 Bioanalista</option>
                             <option value="emergencia">🚨 Usuario de Emergencia</option>
+                            <option value="archivista">🗂️ Archivista</option>
                         </select>
                     </div>
                 </div>
@@ -18943,6 +18978,7 @@ window.abrirModalEditarPersonal = function(id) {
                             <option value="facturador" ${u.rol==='facturador'?'selected':''}>🧾 Facturador</option>
                             <option value="bioanalista" ${u.rol==='bioanalista'?'selected':''}>🔬 Bioanalista</option>
                             <option value="emergencia" ${u.rol==='emergencia'?'selected':''}>🚨 Usuario de Emergencia</option>
+                            <option value="archivista" ${u.rol==='archivista'?'selected':''}>🗂️ Archivista</option>
                         </select>
                     </div>
                     <div>
