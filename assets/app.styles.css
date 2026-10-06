@@ -578,7 +578,7 @@ Specificity: (0,2,0)
 @media (max-width: 640px) {
     .modal-overlay {
         align-items: flex-start;
-        padding-top: calc(50px + 16px);
+        padding-top: calc(40px + 6px);
         padding-left: 1px;
         padding-right: 1px;
     }
@@ -3210,7 +3210,7 @@ Specificity: (0,2,0)
 /* ── Nueva Cita Inteligente (NCI) ── */
 #nci-ov{display:none;position:fixed;inset:0;z-index:5000;background:rgba(15,23,42,.56);
   backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:12px;}
-.nci-box{background:#fff;border-radius:16px;width:100%;max-width:800px;max-height:92vh;
+.nci-box{background:#fff;border-radius:16px;width:100%;max-width:800px;height:96vh;max-height:96vh;
   display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.24);overflow:hidden;
   animation:nciUp .26s cubic-bezier(.22,1,.36,1);}
 @keyframes nciUp{from{transform:translateY(22px) scale(.97);opacity:0}to{transform:none;opacity:1}}
@@ -3260,7 +3260,7 @@ Specificity: (0,2,0)
   display:flex;align-items:center;justify-content:space-between;}
 .nci-mt:hover,.nci-mt.on{border-color:#2A9D8F;color:#0f172a;}
 .nci-ml{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;
-  border:1.5px solid #e2e8f0;border-radius:10px;max-height:270px;overflow-y:auto;
+  border:1.5px solid #e2e8f0;border-radius:10px;max-height:290px;overflow-y:auto;
   z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.1);}
 .nci-ml.on{display:block;}
 .nci-ms{padding:7px 9px;border-bottom:1px solid #f1f5f9;position:sticky;top:0;background:#fff;z-index:1;}
@@ -3289,9 +3289,9 @@ Specificity: (0,2,0)
 .nci-ts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;flex-direction: row;}
 .nci-tb{flex:1;min-width:110px;padding:10px 8px;border-radius:10px;border:2px solid #e2e8f0;
   background:#fff;cursor:pointer;font-size:13px;font-weight:700;color:#475569;text-align:center;}
-.nci-tb:hover:not(.lleno){border-color:#2A9D8F;color:#2A9D8F;}
-.nci-tb.sel{background:#2A9D8F;border-color:#2A9D8F;color:#fff;}
-.nci-tb.recom{background:linear-gradient(135deg,#2A9D8F,#1e8075);border-color:#2A9D8F;color:#fff;flex-basis:100%;}
+.nci-tb:hover:not(.lleno){background: #32bdac;border-color:#2A9D8F;color:#2A9D8F;}
+.nci-tb.sel{background:#2A9D8F;border-color:#008978;color:#ffffff;}
+.nci-tb.recom{border-color:#74bfb6;color:#161616;flex-basis:100%;}
 .nci-tb.lleno{background:#fef2f2;border-color:#fca5a5;color:#ef4444;cursor:not-allowed;}
 .nci-tsub{font-size:10px;font-weight:400;opacity:.82;margin-top:3px;}
 /* footer */
