@@ -1,0 +1,406 @@
+/**
+ * ╔══════════════════════════════════════════════════════════════════╗
+ * ║  KuraDoc — Fix Responsive Mobile/Tablet                         ║
+ * ║  fp_expediente_responsive_fix.css                               ║
+ * ║                                                                  ║
+ * ║  INSTRUCCIÓN: agregar en index.html DESPUÉS de                  ║
+ * ║  fp_expediente.styles.css                                        ║
+ * ║  <link rel="stylesheet" href="assets/fp_expediente_responsive_fix.css"> ║
+ * ║                                                                  ║
+ * ║  O pegar al FINAL de fp_expediente.styles.css                   ║
+ * ║  reemplazando el bloque @media (max-width: 640px) existente     ║
+ * ╚══════════════════════════════════════════════════════════════════╝
+ *
+ * PROBLEMA QUE RESUELVE:
+ *  - En mobile el modal no permite scroll del contenido
+ *  - .fp-actions queda "flotando" fuera de la pantalla o no se ve
+ *  - Los tabs no quedan sticky al hacer scroll
+ *  - El header ocupa demasiado espacio en pantallas pequeñas
+ *  - El panel izquierdo de datos (.fp-panel-info) en el layout
+ *    de dos columnas no se adapta bien
+ *
+ * SOLUCIÓN:
+ *  - El modal ocupa exactamente 100dvh (dynamic viewport height)
+ *    para evitar el problema del browser chrome en mobile
+ *  - Header + Tabs son sticky (position: sticky, top: 0)
+ *  - El body scrollea libremente entre header+tabs y footer
+ *  - El footer de acciones queda fijo al fondo (sticky bottom)
+ *  - El layout de dos columnas colapsa a una sola columna
+ */
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   SMARTPHONE — max-width: 640px
+   ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+
+    /* ── Overlay: sin padding, alineado al fondo ─────────────────── */
+    .fp-overlay {
+        padding: 0;
+        align-items: flex-end;
+        /* El overlay mismo NO scrollea — el contenido interno sí */
+        overflow: hidden;
+    }
+
+    /* ── Modal: ocupa toda la pantalla menos un margen arriba ──────
+       Usamos dvh (dynamic viewport height) para que el browser
+       chrome (barra de URL) no descuadre el layout.
+       Fallback a vh para navegadores que no soporten dvh.        */
+    .fp-modal {
+        border-radius: 20px 20px 0 0;
+        /* Fallback */
+        height: calc(100vh - 40px);
+        /* Valor moderno */
+        height: calc(100dvh - 40px);
+        min-height: unset;
+        max-width: 100%;
+        width: 100%;
+
+        /* El modal es el scroll container principal */
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* ── Header: más compacto, sticky al top ───────────────────────
+       position: sticky no funciona dentro de overflow:hidden,
+       por eso el modal usa overflow:hidden y el scroll está
+       en .fp-body únicamente.                                    */
+    .fp-header {
+        padding: 10px 16px 8px;
+        flex-shrink: 0;  /* nunca se comprime */
+        /* Avatar más pequeño en mobile */
+    }
+
+    /* Avatar más compacto */
+    .fp-avatar-ring {
+        width: 48px;
+        height: 48px;
+        font-size: 22px;
+    }
+
+    /* Nombre más pequeño */
+    .fp-name {
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    /* Subtítulo más compacto */
+    .fp-sub {
+        font-size: 11px;
+        margin-top: 2px;
+    }
+
+    /* Chip de última cita más pequeño */
+    .fp-header > div > div > div[style] {
+        font-size: 10px !important;
+        padding: 2px 6px !important;
+    }
+
+    /* ── Tabs: sticky, sin padding excesivo, scroll horizontal ─────
+       flex-shrink: 0 ya está en el CSS base.
+       Reducimos el padding de cada tab para caber más en pantalla. */
+    .fp-tabs {
+        padding: 0 8px;
+        flex-shrink: 0;
+        /* Sombra sutil para indicar que hay contenido debajo */
+        box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+
+    .fp-tab {
+        padding: 10px 12px;
+        font-size: 11px;
+        gap: 4px;
+    }
+
+    /* Ocultar labels de texto en tabs muy pequeños, dejar solo icono */
+    /* Comentado por defecto — descomentar si la pantalla es muy estrecha
+    .fp-tab span:last-child { display: none; }
+    */
+
+    /* ── Body: es el ÚNICO elemento que scrollea ───────────────────
+       flex:1 + min-height:0 + overflow-y:auto es el patrón correcto
+       para que el body crezca hasta llenar el espacio disponible
+       entre header+tabs y footer, y luego scrollee internamente.  */
+    .fp-body {
+        flex: 1;
+        min-height: 0;     /* CRÍTICO: sin esto flex no limita la altura */
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 12px 14px;
+        /* Asegurar que el contenido no quede tapado por el footer */
+        padding-bottom: 20px;
+        /* Scroll suave en iOS */
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* ── Layout dos columnas → colapsa a una columna ───────────────
+       En mobile el panel lateral izquierdo va ARRIBA del contenido */
+    .fp-layout {
+        flex-direction: column;
+        overflow: visible;  /* el scroll lo maneja .fp-body */
+    }
+
+    .fp-panel-info {
+        width: 100%;
+        max-width: 100%;
+        max-height: none;  /* no limitar altura — muestra todo */
+        border-right: none;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 12px 14px;
+        overflow-y: visible; /* el scroll externo lo maneja */
+    }
+
+    .fp-panel-main {
+        overflow: visible;
+    }
+
+    /* Las tabs internas del panel main también se ajustan */
+    .fp-panel-main .fp-tabs {
+        padding: 0 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+
+    /* El body del panel main no scrollea por sí solo en mobile */
+    .fp-panel-main .fp-body {
+        overflow-y: visible;
+        padding: 12px 14px;
+    }
+
+    /* ── Footer de acciones: fijo al fondo ─────────────────────────
+       flex-shrink:0 ya está en el base. En mobile lo hacemos
+       sticky al bottom usando position:sticky dentro del flex col. */
+   
+   .fp-actions {
+        padding: 10px 14px;
+        gap: 8px;
+        flex-shrink: 0;
+        box-shadow: 0 -2px 12px rgba(0,0,0,.08);
+
+        /* 2 columnas iguales en mobile */
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        overflow-x: visible;
+    }
+    .fp-actions::-webkit-scrollbar { display: none; }
+
+    /* Botones más compactos en mobile */
+     .fp-btn {
+        padding: 9px 10px;
+        font-size: 11.5px;
+        white-space: nowrap;
+        text-align: center;
+        justify-content: center;
+        width: 100%;
+        /* Recortar texto con ellipsis si no cabe */
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+
+
+    /* ── Info de récord al fondo ──────────────────────────────────── */
+    [id^="fp-record-display-"] {
+        padding: 6px 14px 10px;
+        font-size: 10px;
+        flex-shrink: 0;
+    }
+
+    /* ── Grillas de datos → 1 columna en mobile ────────────────────
+       Las fp-field-grid con auto-fit ya colapsan solas,
+       pero las grillas de 2 col explícitas necesitan override.   */
+    .fp-field-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    /* ── Cards de datos personales más compactas ───────────────────  */
+    .fp-field {
+        padding: 10px 12px;
+    }
+
+    .fp-field-label {
+        font-size: 9px;
+        margin-bottom: 3px;
+    }
+
+    .fp-field-value {
+        font-size: 13px;
+    }
+
+    /* ── Chips de citas más compactos ───────────────────────────── */
+    .fp-cita-chip {
+        padding: 10px 12px;
+    }
+
+    /* ── Secciones del expediente más compactas ─────────────────── */
+    .fp-section-titulo,
+    [style*="font-size:11px;font-weight:800;color:#94a3b8"] {
+        font-size: 10px !important;
+    }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   TABLET — 641px a 1024px
+   ═══════════════════════════════════════════════════════════════════ */
+@media (min-width: 641px) and (max-width: 1024px) {
+
+    /* ── Overlay con padding reducido ───────────────────────────── */
+    .fp-overlay {
+        padding: 8px;
+    }
+
+    /* ── Modal: casi toda la pantalla ───────────────────────────── */
+    .fp-modal {
+        /* Fallback */
+        height: calc(100vh - 16px);
+        /* Valor moderno */
+        height: calc(100dvh - 16px);
+        min-height: unset;
+        max-width: 100%;
+        border-radius: 16px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* ── Header más compacto ─────────────────────────────────────── */
+    .fp-header {
+        padding: 10px 20px 8px;
+        flex-shrink: 0;
+    }
+
+    .fp-avatar-ring {
+        width: 58px;
+        height: 58px;
+        font-size: 26px;
+    }
+
+    .fp-name {
+        font-size: 17px;
+    }
+
+    /* ── Tabs ─────────────────────────────────────────────────────── */
+    .fp-tabs {
+        padding: 0 16px;
+        flex-shrink: 0;
+    }
+
+    .fp-tab {
+        padding: 10px 14px;
+        font-size: 11.5px;
+    }
+
+    /* ── Body: scrollea entre header y footer ───────────────────── */
+    .fp-body {
+        flex: 1;
+        min-height: 0;     /* CRÍTICO */
+        overflow-y: auto;
+        padding: 14px 20px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* ── Layout dos columnas en tablet: panel izquierdo más estrecho */
+    .fp-layout {
+        overflow: hidden;
+    }
+
+    .fp-panel-info {
+        width: 240px;
+        min-width: 200px;
+        padding: 12px 14px;
+    }
+
+    .fp-panel-main .fp-body {
+        padding: 14px 18px;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    /* ── Footer ──────────────────────────────────────────────────── */
+    .fp-actions {
+        padding: 12px 20px;
+        flex-shrink: 0;
+        flex-wrap: wrap;
+        gap: 8px;
+        box-shadow: 0 -2px 10px rgba(0,0,0,.07);
+    }
+
+    .fp-btn {
+        padding: 9px 16px;
+        font-size: 12.5px;
+    }
+
+    /* ── Info de récord ──────────────────────────────────────────── */
+    [id^="fp-record-display-"] {
+        padding: 8px 20px 10px;
+        flex-shrink: 0;
+    }
+
+    /* ── Grillas de datos: 2 columnas en tablet ─────────────────── */
+    .fp-field-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   FIX UNIVERSAL — aplica en todos los tamaños
+   Asegura que el modal SIEMPRE tenga la estructura flex correcta
+   independientemente del tamaño de pantalla.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* El modal siempre es columna flex */
+.fp-modal {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header y tabs nunca se comprimen */
+.fp-header,
+.fp-tabs,
+.fp-actions,
+[id^="fp-record-display-"] {
+    flex-shrink: 0;
+}
+
+/* El body siempre crece para llenar el espacio disponible */
+.fp-body {
+    flex: 1;
+    min-height: 0;
+}
+
+/* En el layout de dos columnas el panel main también es flex col */
+.fp-panel-main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.fp-panel-main .fp-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+
+
+
+  /* ── Grid del Expediente: 800px+1fr → columna única en mobile ── */
+@media (max-width: 640px) {
+    .fp-exp-grid {
+        grid-template-columns: 1fr !important;
+        gap: 8px !important;
+    }
+}
+
+/* En tablet también colapsa a una columna */
+@media (min-width: 641px) and (max-width: 1024px) {
+    .fp-exp-grid {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+}
