@@ -368,6 +368,7 @@ function stopInactivityWatcher() {
                     clearTimeout(_splashTimeout);
                     _hideSplash();
                     document.getElementById('loginPage').classList.remove('hidden');
+            window._kdPrefillLogin && window._kdPrefillLogin();
                     document.getElementById('mainApp').classList.add('hidden');
                     document.getElementById('registerModal').classList.add('hidden');
                     document.body.classList.add('app-not-logged');
@@ -516,11 +517,35 @@ function stopInactivityWatcher() {
             document.getElementById('loginBtnText').classList.add('hidden');
             document.getElementById('loginSpinner').classList.remove('hidden');
             
-            try {
-                await auth.signInWithEmailAndPassword(email, password);
+              
+         try {
+              if (email.includes('@')) {
+                    await auth.signInWithEmailAndPassword(email, password);   // flujo por correo (sin cambios)
+                } else {
+                    await window._loginPorTelefono(email, password);          // flujo por teléfono (Fase 2)
+                }
             } catch (error) {
                 // Errores específicos por código de Firebase Auth
-                const errMap = {
+         
+         const errMap = {
+               
+                                      'kd/credenciales': {
+                        icon: '🔑', title: 'No pudimos validar tus datos',
+                        msg: '⚠️ No pudimos validar las credenciales. Verifica la información e inténtalo nuevamente. Si no recuerdas tu contraseña, puedes restablecerla o pedir ayuda a la secretaria de tu médico.',
+                        field: 'loginPassword',
+                        action: { label: '🔁 Restablecer mi contraseña', fn: '_mostrarOlvideContrasena' }
+                    },
+                    'kd/necesita-codigo': {
+                        icon: '👨‍👩‍👧', title: 'Número compartido',
+                        msg: 'ℹ️ Este número está asociado a más de una cuenta. Introduce tu código de paciente para continuar.',
+                        field: 'loginCodigo', action: null
+                    },
+                    'kd/demasiados': {
+                        icon: '⏳', title: 'Demasiados intentos',
+                        msg: '🛑 Se recibieron demasiados intentos. Espera unos minutos e inténtalo de nuevo.',
+                        field: null, action: null
+                    },
+
                     'auth/user-not-found': {
                         icon: '📧', title: 'Correo no registrado',
                         msg: '⚠️ No encontramos ninguna cuenta con este correo. Verifica que sea el correo con el que te registraste, o crea una cuenta nueva.',
@@ -7274,6 +7299,7 @@ async function procesarReservaCita(medicoId) {
         nombreMedico:           medico.nombre || '',
         especialidadMedico:     medico.especialidad || '',
         nombreCentro:           (appState.centrosMedicos.find(x=>x.id===medico.centroMedicoId))?.nombre || '',
+        direccionCentro:        (appState.centrosMedicos.find(x=>x.id===medico.centroMedicoId))?.direccion || '',
         tokenConfirmacion:      _citaToken,
         urlConfirmacion:        _appUrl + '?confirmarCita=' + _citaToken,
         whatsappNotifAgenda:    false,  // Cloud Function lo pone true al enviar
@@ -7607,6 +7633,7 @@ window._mcSetTab = function(tab, btnEl) {
             // ─────────────────────────────────────────────────────
 
             document.getElementById('loginPage').classList.remove('hidden');
+            window._kdPrefillLogin && window._kdPrefillLogin();
             
             // Los datos iniciales ya existen en Firestore — no se consultan aquí
             // para evitar errores de permisos antes de que se resuelva la autenticación
@@ -19515,8 +19542,13 @@ window._guardarPerfil = async function(uidExterno, esExterno) {
                         }
                     }
                 }
-                // Siempre guardar en Firestore como referencia (secretaria/admin/médico pueden verla)
-                datos.clave = pwdNew;
+                                // Pacientes: la contraseña NUNCA se guarda en Firestore; se avisa al servidor para retirar la clave inicial.
+                // Personal (médico, secretaria…): se mantiene el comportamiento actual.
+                if (ud.rol === 'paciente') {
+                    if (!esExterno && window._kdNotificarClaveCambiada) window._kdNotificarClaveCambiada();
+                } else {
+                    datos.clave = pwdNew;
+                }
             }
         }
 
@@ -20817,44 +20849,70 @@ window.renderPaginaConfirmarCita = async function(token) {
             return;
         }
 
-        // Formatear fecha
+        // ── Datos preparados para el texto ───────────────────────
+        const esc = _kdEscHtml;
+        const esVesp      = (cita.tanda||'').includes('vespert');
+        const tandaFrase  = esVesp ? 'en la tarde' : 'en la mañana';
+        const tandaHora   = esVesp ? '🌆 Vespertina · 2:00 PM' : '🌅 Matutina · 8:00 AM';
         const fechaBonita = cita.fechaStr
             ? new Date(cita.fechaStr+'T12:00:00').toLocaleDateString('es-DO',
-                {weekday:'long',day:'2-digit',month:'long',year:'numeric'})
-            : '—';
-        const tandaLabel = (cita.tanda||'').includes('vespert') ? '🌆 Vespertina (2:00 PM)' : '🌅 Matutina (8:00 AM)';
+                {weekday:'long',day:'numeric',month:'long',year:'numeric'}).replace(',', '')
+            : '';
+        const primerNombre = _kdTituloNombre((cita.nombrePaciente||'').trim().split(/\s+/)[0] || '');
+        const nombreMed    = (cita.nombreMedico || '').trim();
+        const artMed       = /^dra\.?\s/i.test(nombreMed) ? 'la ' : (/^dr\.?\s/i.test(nombreMed) ? 'el ' : '');
         const yaConfirmada = !!cita.confirmadoPorPaciente;
+
+        // Para el botón "Iniciar sesión" (el usuario del paciente es su teléfono)
+        window._kdCitaNombre   = cita.nombrePaciente || '';
+        window._kdTelefonoCita = (cita.telefonoPaciente || '').trim();
+        const telMasc = _kdTelefonoEnmascarado(window._kdTelefonoCita);
+
+        // Párrafo principal
+        const parrafo = `Hola <strong>${esc(primerNombre || 'paciente')}</strong>, tu cita ha sido registrada` +
+            (fechaBonita ? ` para el <strong>${esc(fechaBonita)}</strong>` : '') +
+            `, <strong>${tandaFrase}</strong>` +
+            (nombreMed ? `, con ${artMed}<strong>${esc(nombreMed)}</strong>` : '') +
+            (cita.especialidadMedico ? `, especialista en <strong>${esc(cita.especialidadMedico)}</strong>` : '') + '.';
+
+        const H3 = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin:0 0 2px;';
+        const PTXT = 'margin:0;font-size:12px;color:#475569;line-height:1.35;';
 
         pg.innerHTML = `
         <div style="min-height:100vh;background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%);
-            padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px;">
-            <div style="width:100%;max-width:420px;">
+            padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:20px;">
+            <div style="width:100%;max-width:440px;">
 
                 <!-- Logo -->
-                <div style="text-align:center;margin-bottom:24px;">
-                    <div style=" border-radius:18px;display:inline-flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 8px 24px rgba(37,99,235,.25);margin-bottom:10px;">
+                <div style="text-align:center;margin-bottom:12px;">
+                    <div style=" border-radius:18px;display:inline-flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 8px 24px rgba(37,99,235,.25);margin-bottom:2px;">
                         <img src="img/logok.png?v=2" alt="KuraDoc" class="kd-logo-img">
                      </div>
-                       
-                    
-                  
-                    <div style="font-size:12px;color:#64748b;">Sistema de Gestión Clínica</div>
+                    <div style="font-size:12px;color:#64748b;"></div>
+                    <button onclick="window._kdIrALogin()"
+                        style="margin-top:8px;padding:3px 10px;background:transparent;color:#2563eb;
+                        border:1px solid #bfdbfe;border-radius:999px;font-size:11px;font-weight:500;
+                        cursor:pointer;transition:all .2s;"
+                        onmouseover="this.style.background='#eff6ff'"
+                        onmouseout="this.style.background='transparent'">
+                       Iniciar sesión
+                    </button>
                 </div>
 
                 <!-- Tarjeta principal -->
                 <div style="background:white;border-radius:24px;overflow:hidden;
-                    box-shadow:0 20px 60px rgba(0,0,0,.1);margin-bottom:16px;">
+                    box-shadow:0 20px 60px rgba(0,0,0,.1);margin-bottom:12px;">
 
                     <!-- Header con estado -->
                     <div style="background:${yaConfirmada ? 'linear-gradient(135deg,#059669,#047857)' : 'linear-gradient(135deg,#0f172a,#1e3a5f)'};
-                        padding:20px 22px;">
+                        padding:6px 22px;">
                         <div style="display:flex;align-items:center;gap:12px;">
                             <div style="width:46px;height:46px;background:rgba(255,255,255,.15);border-radius:14px;
-                                display:flex;align-items:center;justify-content:center;font-size:22px;">
+                                display:flex;align-items:center;justify-content:center;font-size:20px;">
                                 ${yaConfirmada ? '✅' : '📋'}
                             </div>
                             <div>
-                                <div style="font-size:13px;font-weight:900;color:white;letter-spacing:-.2px;">
+                                <div style="font-size:12px;font-weight:800;color:white;letter-spacing:-.2px;">
                                     ${yaConfirmada ? '¡Cita Confirmada!' : 'Detalles de tu Cita'}
                                 </div>
                                 <div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:2px;">
@@ -20864,15 +20922,31 @@ window.renderPaginaConfirmarCita = async function(token) {
                         </div>
                     </div>
 
-                    <!-- Datos de la cita -->
-                    <div style="padding:18px 20px;">
-                        <div style="display:grid;gap:10px;margin-bottom:18px;">
-                            ${_citaChip('👤 Paciente',    cita.nombrePaciente || '—')}
-                            ${_citaChip('👨‍⚕️ Médico',   cita.nombreMedico || '—')}
-                            ${_citaChip('🩺 Especialidad', cita.especialidadMedico || '—')}
-                            ${_citaChip('📅 Fecha',        fechaBonita)}
-                            ${_citaChip('🕐 Tanda',        tandaLabel)}
-                            ${cita.nombreCentro ? _citaChip('🏥 Centro', cita.nombreCentro) : ''}
+                    <div style="padding:20px 22px;">
+
+                        <!-- Párrafo principal -->
+                        <p style="margin:0 0 18px;font-size:12px;color:#0f172a;line-height:1.7;">${parrafo}</p>
+
+                        <!-- Detalles restantes -->
+                        <div style="background:#f8fafc;border:1px solid #f1f5f9;border-radius:14px;padding:12px 14px;margin-bottom:16px;">
+                            <div style="${H3}">Dónde y a qué hora</div>
+                            <div style="font-size:12px;color:#0f172a;line-height:1.6;">
+                                ${cita.nombreCentro ? `<strong>${esc(cita.nombreCentro)}</strong><br>` : ''}
+                                ${cita.direccionCentro ? `${esc(cita.direccionCentro)}<br>` : ''}
+                                ${tandaHora}
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom:10px;">
+                            <div style="${H3}">Antes de tu visita</div>
+                            <p style="${PTXT}margin-bottom:10px;">
+                                Tu turno se asigna por <strong>orden de llegada</strong>, por lo que te pedimos
+                                llegar <strong>30 minutos antes</strong>. Así agilizamos tu registro y facturación.
+                            </p>
+                            <p style="${PTXT}">
+                                Te sugerimos traer contigo tu documento de identidad${cita.seguroMedicoPaciente ? ', tu carnet del seguro médico' : ' y, si tienes, tu carnet del seguro médico'}
+                                y cualquier receta o estudio previo que consideres importante. Con eso todo será mucho más fácil. 🙂
+                            </p>
                         </div>
 
                         ${!yaConfirmada ? `
@@ -20886,7 +20960,7 @@ window.renderPaginaConfirmarCita = async function(token) {
                                 onmouseout="this.style.transform=''">
                                 ✅ Confirmar mi asistencia
                             </button>
-                            <button onclick="window._cancelarCitaPublica('${doc.id}','${(cita.nombrePaciente||'').replace(/'/g,"\\'")}')"
+                            <button onclick="window._cancelarCitaPublica('${doc.id}', window._kdCitaNombre)"
                                 style="width:100%;padding:12px;background:#fef2f2;color:#dc2626;
                                 border:1.5px solid #fca5a5;border-radius:14px;font-size:13px;font-weight:700;
                                 cursor:pointer;transition:all .2s;"
@@ -20894,18 +20968,51 @@ window.renderPaginaConfirmarCita = async function(token) {
                                 onmouseout="this.style.background='#fef2f2'">
                                 ✕ No podré asistir — Cancelar
                             </button>
+                            <p style="margin:2px 0 0;font-size:11px;color:#94a3b8;line-height:1.5;text-align:center;">
+                                Estos botones sirven para avisarle al centro si asistirás o si no podrás hacerlo.
+                            </p>
                         </div>` : `
                         <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;
                             padding:14px;text-align:center;">
-                            <div style="font-size:24px;margin-bottom:6px;">🎉</div>
+                            
                             <div style="font-size:13px;font-weight:700;color:#15803d;">
                                 ¡Tu asistencia ya está confirmada!
                             </div>
                             <div style="font-size:11px;color:#166534;margin-top:4px;">
-                                Recuerda llegar unos minutos antes de tu turno.
+                                Recuerda llegar 30 minutos antes de tu turno.
                             </div>
                         </div>`}
                     </div>
+                </div>
+
+                <!-- Invitación al portal del paciente -->
+                <div style="background:white;border-radius:20px;padding:20px 22px;margin-bottom:12px;
+                    box-shadow:0 4px 16px rgba(0,0,0,.06);">
+                    <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+                        ✨ Tu salud, también en tu teléfono
+                    </div>
+                    <p style="${PTXT}margin-bottom:10px;">
+                        Con tu portal de paciente KuraDoc puedes seguir tus próximas citas, tener tu información
+                        a la mano y gestionar todo desde tu celular, sin filas ni llamadas.
+                        Entra y descubre todo lo que puedes hacer.
+                    </p>
+                    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:11px 13px;margin-bottom:14px;">
+                        <p style="margin:0 0 6px;font-size:12px;color:#075985;line-height:1.6;">
+                            ${telMasc ? `📱 Tu usuario es tu número de teléfono: <strong>${esc(telMasc)}</strong>.<br>` : ''}
+                            🔑 Tu contraseña inicial te la entregó recepción. Si ya la cambiaste o no la recuerdas,
+                            usa <strong>"¿Olvidaste tu contraseña?"</strong> o pide ayuda en el centro y con gusto te la restablecen.
+                        </p>
+                        <p style="margin:0;font-size:12px;color:#075985;line-height:1.6;">
+                            🪪 Si el sistema te pide tu <strong>código de paciente</strong>, solicítalo en recepción.
+                            Es personal: no lo compartas con nadie.
+                        </p>
+                    </div>
+                    <button onclick="window._kdIrALogin()"
+                        style="width:100%;padding:13px;background:linear-gradient(135deg,#2563eb,#1d4ed8);
+                        color:white;border:none;border-radius:14px;font-size:14px;font-weight:800;
+                        cursor:pointer;box-shadow:0 4px 16px rgba(37,99,235,.28);">
+                        🔐 Iniciar sesión
+                    </button>
                 </div>
 
                 <!-- Mensaje motivador -->
@@ -20923,6 +21030,41 @@ window.renderPaginaConfirmarCita = async function(token) {
         pg.innerHTML = _citaPageError('Error al cargar','No se pudo cargar la información de la cita. Intenta de nuevo.');
         console.error('[ConfirmarCita]', e);
     }
+};
+
+// ── Helpers de texto para la página de cita ───────────────────────
+function _kdEscHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+        ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function _kdTituloNombre(s) {
+    return String(s || '').toLowerCase().replace(/(^|\s)(\S)/g, (m, a, b) => a + b.toUpperCase());
+}
+function _kdTelefonoEnmascarado(tel) {
+    const d = String(tel || '').replace(/\D/g, '');
+    if (d.length < 7) return '';
+    return d.slice(0, 3) + '-***-' + d.slice(-4);
+}
+
+// Rellena el usuario del login con el teléfono guardado desde la página de la cita
+window._kdPrefillLogin = function() {
+    try {
+        const pre = sessionStorage.getItem('kd_prefill_login');
+        if (!pre) return;
+        sessionStorage.removeItem('kd_prefill_login');
+        const inp = document.getElementById('loginEmail');
+        if (!inp) return;
+        inp.value = pre;
+        setTimeout(() => document.getElementById('loginPassword')?.focus(), 500);
+    } catch (_) {}
+};
+
+// Lleva al login de la página principal y deja el teléfono listo en el campo de usuario
+window._kdIrALogin = function() {
+    try {
+        if (window._kdTelefonoCita) sessionStorage.setItem('kd_prefill_login', window._kdTelefonoCita);
+    } catch (_) { /* sin sessionStorage: se abre el login vacío */ }
+    window.location.href = window.location.origin + window.location.pathname;
 };
 
 // ── Helpers de UI ─────────────────────────────────────────────────
@@ -24241,6 +24383,7 @@ async function _guardarCitaConRecord(medicoId) {
         nombreMedico:           medico.nombre || '',
         especialidadMedico:     medico.especialidad || '',
         nombreCentro:           (appState.centrosMedicos.find(x=>x.id===medico.centroMedicoId))?.nombre || '',
+        direccionCentro:        (appState.centrosMedicos.find(x=>x.id===medico.centroMedicoId))?.direccion || '',
         tokenConfirmacion:      _citaToken,
         urlConfirmacion:        _appUrl + '?confirmarCita=' + _citaToken,
         whatsappNotifAgenda:    false,
