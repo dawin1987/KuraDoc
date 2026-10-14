@@ -3752,7 +3752,7 @@ function renderCabeceraCitas() {
 
                 <div class="citas-filtros-bar">
                     <input type="text" id="inputBusquedaGlobal"
-                           placeholder="Buscar paciente..." 
+                           placeholder="Buscar paciente o record..." 
                            class="form-control search-input citas-buscador-input"
                            value="${appState.filtroBusquedaTexto || ''}"
                            oninput="appState.filtroBusquedaTexto = this.value; renderListaCitasSolo();">
@@ -3885,7 +3885,7 @@ function renderListaCitasSolo() {
         citasFiltradas = citasFiltradas.filter(c => {
             const pac = _uGet(c.pacienteId);
             const med = _uGet(c.medicoId);
-            return pac?.nombre?.toLowerCase().includes(busq) || med?.nombre?.toLowerCase().includes(busq);
+            return pac?.nombre?.toLowerCase().includes(busq) || med?.nombre?.toLowerCase().includes(busq) || String(c.numeroRecord || '').toLowerCase().includes(busq);
         });
     }
 
@@ -6146,6 +6146,8 @@ async function cargarPacientesDesdeDB(reiniciar = false) {
         contenedor.innerHTML = '<div style="text-align:center; padding:40px; color:#64748b;">🔍 Consultando directorio global...</div>';
         appState.ultimoDocPaciente = null;
         appState.pacientesDB = [];
+        appState.pacHayMasDB = false;
+        appState.pacPagina = 0;
     }
 
     try {
@@ -6167,6 +6169,13 @@ async function cargarPacientesDesdeDB(reiniciar = false) {
             return;
         }
 
+        // Carga adicional sin más resultados: ya no hay más pacientes por traer
+        if (snapshot.empty) {
+            appState.pacHayMasDB = false;
+            renderListaPacientesSolo();
+            return;
+        }
+
         const nuevos = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
         
         // Guardamos el último documento para la siguiente página
@@ -6181,14 +6190,17 @@ async function cargarPacientesDesdeDB(reiniciar = false) {
             mezclarPacientesEnEstado(appState._pacientesRecientes || []);
         }
 
-        // Mostramos el botón "Cargar más" solo si trajo 50 (lo que indica que puede haber más)
+        // Si trajo 50, puede haber más en la base de datos (la paginación visual lo usa)
+        appState.pacHayMasDB = snapshot.docs.length === 50;
+        // El botón "Cargar más" ya no se usa: ahora hay paginación visual
         const loadMoreBtn = document.getElementById('load-more-container');
-        if (loadMoreBtn) loadMoreBtn.style.display = snapshot.docs.length === 50 ? 'block' : 'none';
+        if (loadMoreBtn) loadMoreBtn.style.display = 'none';
 
         renderListaPacientesSolo();
     } catch (error) {
         console.error("Error al cargar pacientes:", error);
-        contenedor.innerHTML = '<div style="color:red; text-align:center;">Error al conectar con la base de datos.</div>';
+        // Si falla una carga adicional (o precarga) no se borra la lista que ya se ve
+        if (reiniciar) contenedor.innerHTML = '<div style="color:red; text-align:center;">Error al conectar con la base de datos.</div>';
     } finally {
         appState.cargandoPacientes = false;
     }
@@ -6229,10 +6241,12 @@ function renderBuscadorPacientes() {
         placeholder="Buscar por nombre, cédula o teléfono..."
         class="form-control search-input"
         value=""
+        onkeydown="if(event.key==='Enter'){buscarEnBDDirectorio();}"
         oninput="
             appState.filtroBusquedaPacientes = this.value;
-            renderListaPacientesSolo();
+            _pacRenderDebounce();
             _actualizarBtnBuscarBD();
+            _pacAutoBD();
 
             document.getElementById('btnLimpiarBusquedaPacientes').style.display =
                 this.value.trim() !== '' ? 'flex' : 'none';
@@ -6353,14 +6367,12 @@ function renderListaPacientesSolo() {
         pacientesMostrar = pacientesMostrar.filter(p => _pacMatchModo(p, busq, appState.pacModoDir));
     }
 
-    // ── Ordenar ──
-    pacientesMostrar = [...pacientesMostrar].sort((a, b) => {
-        if (a._recienRegistrado && !b._recienRegistrado) return -1;
-        if (!a._recienRegistrado && b._recienRegistrado) return 1;
-        const fa = a.fechaCreacion?.toDate?.() ? a.fechaCreacion.toDate() : new Date(a.fechaCreacion || 0);
-        const fb = b.fechaCreacion?.toDate?.() ? b.fechaCreacion.toDate() : new Date(b.fechaCreacion || 0);
-        return fb - fa;
-    });
+    // ── Ordenar (copia; la fecha se calcula una sola vez por paciente) ──
+    // Nota: NO se modifica appState.pacientesDB, solo esta lista de trabajo.
+    pacientesMostrar = pacientesMostrar
+        .map(p => ({ p, nuevo: p._recienRegistrado ? 1 : 0, f: _pacFecha(p) }))
+        .sort((a, b) => (b.nuevo - a.nuevo) || (b.f - a.f))
+        .map(x => x.p);
 
     // 4. Caso sin resultados
     if (pacientesMostrar.length === 0) {
@@ -6376,12 +6388,33 @@ function renderListaPacientesSolo() {
         return;
     }
 
-    const total = pacientesMostrar.length;
+    // ── Paginación visual: solo se dibujan las filas de la página actual ──
+    const _textoBusq = (appState.filtroBusquedaPacientes || '').trim();
+    const _sigPac = [appState.filtroSoloMisPacientes ? 1 : 0, appState.pacModoDir || 'general', _textoBusq].join('|');
+    if (appState._pacSig !== _sigPac) { appState._pacSig = _sigPac; appState.pacPagina = 0; }   // otra búsqueda/vista → página 1
+    const tam      = _pacTamPagina();
+    const total    = pacientesMostrar.length;
+    const hayMas   = !!appState.pacHayMasDB && !appState.filtroSoloMisPacientes && !_textoBusq;
+    const paginas  = Math.max(1, Math.ceil(total / tam));
+    if ((appState.pacPagina || 0) > paginas - 1) appState.pacPagina = paginas - 1;
+    const pagina   = appState.pacPagina || 0;
+    const inicio   = pagina * tam;
+    const visibles = pacientesMostrar.slice(inicio, inicio + tam);
+    const hasta    = inicio + visibles.length;
+    const hayNav   = paginas > 1 || hayMas;
+    const textoRango = hayNav
+        ? `${inicio + 1}–${hasta} de ${total}${hayMas ? '+' : ''}`
+        : `${total} paciente${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`;
+
+    // Conteo de citas por paciente: una sola pasada (antes era un filter por fila)
+    const citasPorPaciente = new Map();
+    (appState.citas || []).forEach(c => citasPorPaciente.set(c.pacienteId, (citasPorPaciente.get(c.pacienteId) || 0) + 1));
+
     let filas = '';
 
-    for (let i = 0; i < pacientesMostrar.length; i++) {
-        const p = pacientesMostrar[i];
-        const nCitas = (appState.citas || []).filter(c => c.pacienteId === p.uid).length;
+    for (let i = 0; i < visibles.length; i++) {
+        const p = visibles[i];
+        const nCitas = citasPorPaciente.get(p.uid) || 0;
         const esNuevo = p._recienRegistrado === true;
         const iniciales = (p.nombre || '?').split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase();
         
@@ -6473,9 +6506,11 @@ function renderListaPacientesSolo() {
         <div style="background:white;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;border:1px solid #e2e8f0;">
             <div style="padding:10px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
                 <span style="font-size:12px;color:#64748b;font-weight:600;">
-                    ${total} paciente${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}
+                    ${textoRango}
                 </span>
-                <span style="font-size:11px;color:#94a3b8;">Clic en <strong>Ver →</strong> para abrir la ficha</span>
+                ${hayNav
+                    ? _pacNavHTML(pagina, paginas, hayMas, true)
+                    : (window.innerWidth > 640 ? '<span style="font-size:11px;color:#94a3b8;">Clic en <strong>Ver →</strong> para abrir la ficha</span>' : '')}
             </div>
             <div style="overflow-x:auto;">
                 <table style="width:100%;border-collapse:collapse;font-family:inherit;">
@@ -6495,16 +6530,107 @@ function renderListaPacientesSolo() {
                     </tbody>
                 </table>
             </div>
+            ${hayNav ? `<div style="padding:10px 16px;border-top:1px solid #f1f5f9;display:flex;justify-content:center;">${_pacNavHTML(pagina, paginas, hayMas, false)}</div>` : ''}
         </div>
     `;
 
+    // Chips de récord: solo para las filas visibles (máx. una página)
     const centroIdActual = _getCentroIdUsuario();
     if (centroIdActual) {
-        pacientesMostrar.forEach(p => {
+        visibles.forEach(p => {
             if (p.uid) _cargarRecordEnTarjeta(p.uid, centroIdActual, 'record-chip-' + p.uid);
         });
     }
+
+    // Precarga silenciosa: si se acerca al final de lo cargado, trae el siguiente lote
+    if (hayMas && !appState.cargandoPacientes && pagina >= paginas - 2) {
+        cargarPacientesDesdeDB(false);
+    }
 }
+
+// ── Controles y utilidades de la paginación del directorio ──────────
+window._pacTamPagina = function() {
+    if (appState.pacTam) return appState.pacTam;
+    let v = 50;
+    try { v = parseInt(localStorage.getItem('kd_pac_tam'), 10) || 50; } catch (_) {}
+    if (![25, 50, 100].includes(v)) v = 50;
+    return (appState.pacTam = v);
+};
+
+window._pacNavHTML = function(pagina, paginas, hayMas, conSelector) {
+    const btn = 'class="pac-nav-btn" style="border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:7px;padding:4px 11px;font-size:13px;font-weight:700;cursor:pointer;line-height:1.2;"';
+    const dis = 'disabled style="border:1px solid #f1f5f9;background:#f8fafc;color:#cbd5e1;border-radius:7px;padding:4px 11px;font-size:13px;font-weight:700;cursor:not-allowed;line-height:1.2;"';
+    const prevOff = pagina <= 0;
+    const nextOff = pagina >= paginas - 1 && !hayMas;
+    const tam = _pacTamPagina();
+    const selector = conSelector ? `
+        <select onchange="_pacCambiarTam(this.value)" title="Pacientes por página"
+                style="border:1px solid #e2e8f0;border-radius:7px;padding:4px 6px;font-size:11px;color:#475569;background:#fff;">
+            ${[25, 50, 100].map(n => `<option value="${n}" ${n === tam ? 'selected' : ''}>${n} / pág.</option>`).join('')}
+        </select>` : '';
+    return `<div style="display:flex;align-items:center;gap:6px;">
+        ${selector}
+        <button type="button" ${prevOff ? dis : btn} ${prevOff ? '' : 'onclick="_pacIrPagina(-1)"'} title="Página anterior">‹</button>
+        <span style="font-size:11px;color:#64748b;white-space:nowrap;">Pág. ${pagina + 1}${hayMas ? '' : ' de ' + paginas}</span>
+        <button type="button" ${nextOff ? dis : btn} ${nextOff ? '' : 'onclick="_pacIrPagina(1)"'} title="Página siguiente">›</button>
+    </div>`;
+};
+
+// Cambia de página. Si la página destino aún no está en memoria, trae lotes de la BD.
+window._pacIrPagina = async function(delta) {
+    const tam = _pacTamPagina();
+    const destino = Math.max(0, (appState.pacPagina || 0) + delta);
+    const sinFiltro = !(appState.filtroBusquedaPacientes || '').trim() && !appState.filtroSoloMisPacientes;
+    if (delta > 0 && sinFiltro && appState.pacHayMasDB && (appState.pacientesDB || []).length < (destino + 1) * tam) {
+        document.querySelectorAll('.pac-nav-btn').forEach(b => { b.disabled = true; b.style.opacity = '.5'; });
+        let guard = 0;
+        while (appState.pacHayMasDB && guard++ < 40 && (appState.pacientesDB || []).length < (destino + 1) * tam) {
+            if (appState.cargandoPacientes) { await new Promise(r => setTimeout(r, 150)); continue; }
+            await cargarPacientesDesdeDB(false);
+        }
+    }
+    appState.pacPagina = destino;
+    renderListaPacientesSolo();
+    const cont = document.getElementById('contenedor-lista-pacientes');
+    if (cont && cont.scrollIntoView) cont.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+window._pacCambiarTam = function(v) {
+    const n = parseInt(v, 10);
+    if (![25, 50, 100].includes(n)) return;
+    appState.pacTam = n;
+    try { localStorage.setItem('kd_pac_tam', String(n)); } catch (_) {}
+    appState.pacPagina = 0;
+    renderListaPacientesSolo();
+};
+
+// Re-dibuja con una pequeña espera mientras se escribe (evita redibujar en cada tecla)
+window._pacRenderDebounce = (function() {
+    let t;
+    return function() { clearTimeout(t); t = setTimeout(() => renderListaPacientesSolo(), 150); };
+})();
+
+// Búsqueda automática en la base de datos al dejar de escribir (modo general, ≥3 letras).
+// Reutiliza buscarEnBDDirectorio → buscarPacientesServidor (mismos límites e índices).
+window._pacAutoBD = (function() {
+    let t; const cache = new Map(); const TTL = 60000;
+    return function() {
+        clearTimeout(t);
+        const txt  = (appState.filtroBusquedaPacientes || '').trim();
+        const modo = appState.pacModoDir || 'general';
+        if (modo !== 'general' || appState.filtroSoloMisPacientes || txt.length < 3) return;
+        const key = txt.toLowerCase();
+        const hit = cache.get(key);
+        if (hit && Date.now() - hit < TTL) return;
+        t = setTimeout(async () => {
+            if (appState.currentView !== 'pacientes') return;
+            if ((appState.filtroBusquedaPacientes || '').trim() !== txt) return;
+            if ((appState.pacModoDir || 'general') !== 'general') return;
+            cache.set(key, Date.now());
+            await buscarEnBDDirectorio();
+        }, 600);
+    };
+})();
 
 
 
@@ -8710,7 +8836,7 @@ function imprimirListadoPendientes() {
         citasFiltradas = citasFiltradas.filter(c => {
             const pac = _uGet(c.pacienteId);
             const med = _uGet(c.medicoId);
-            return pac?.nombre?.toLowerCase().includes(busq) || med?.nombre?.toLowerCase().includes(busq);
+            return pac?.nombre?.toLowerCase().includes(busq) || med?.nombre?.toLowerCase().includes(busq) || String(c.numeroRecord || '').toLowerCase().includes(busq);
         });
     }
 
@@ -9225,7 +9351,7 @@ function imprimirListadoSala() {
         citasFiltradas = citasFiltradas.filter(c => {
             const pac = _uGet(c.pacienteId || u.uid === c.pacienteId);
             const med = _uGet(c.medicoId || u.uid === c.medicoId);
-            return pac?.nombre?.toLowerCase().includes(busq) || med?.nombre?.toLowerCase().includes(busq);
+            return pac?.nombre?.toLowerCase().includes(busq) || med?.nombre?.toLowerCase().includes(busq) || String(c.numeroRecord || '').toLowerCase().includes(busq);
         });
     }
 
@@ -20875,44 +21001,44 @@ window.renderPaginaConfirmarCita = async function(token) {
             (nombreMed ? `, con ${artMed}<strong>${esc(nombreMed)}</strong>` : '') +
             (cita.especialidadMedico ? `, especialista en <strong>${esc(cita.especialidadMedico)}</strong>` : '') + '.';
 
-        const H3 = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin:0 0 2px;';
-        const PTXT = 'margin:0;font-size:12px;color:#475569;line-height:1.35;';
+        const H3 = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin:0 0 8px;';
+        const PTXT = 'margin:0;font-size:13px;color:#475569;line-height:1.65;';
 
         pg.innerHTML = `
         <div style="min-height:100vh;background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%);
-            padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:20px;">
+            padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px;">
             <div style="width:100%;max-width:440px;">
 
                 <!-- Logo -->
-                <div style="text-align:center;margin-bottom:12px;">
-                    <div style=" border-radius:18px;display:inline-flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 8px 24px rgba(37,99,235,.25);margin-bottom:2px;">
+                <div style="text-align:center;margin-bottom:24px;">
+                    <div style=" border-radius:18px;display:inline-flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 8px 24px rgba(37,99,235,.25);margin-bottom:10px;">
                         <img src="img/logok.png?v=2" alt="KuraDoc" class="kd-logo-img">
                      </div>
-                    <div style="font-size:12px;color:#64748b;"></div>
+                    <div style="font-size:12px;color:#64748b;">Sistema de Gestión Clínica</div>
                     <button onclick="window._kdIrALogin()"
-                        style="margin-top:8px;padding:3px 10px;background:transparent;color:#2563eb;
-                        border:1px solid #bfdbfe;border-radius:999px;font-size:11px;font-weight:500;
+                        style="margin-top:10px;padding:5px 14px;background:transparent;color:#2563eb;
+                        border:1px solid #bfdbfe;border-radius:999px;font-size:11px;font-weight:600;
                         cursor:pointer;transition:all .2s;"
                         onmouseover="this.style.background='#eff6ff'"
                         onmouseout="this.style.background='transparent'">
-                       Iniciar sesión
+                        🔐 Iniciar sesión
                     </button>
                 </div>
 
                 <!-- Tarjeta principal -->
                 <div style="background:white;border-radius:24px;overflow:hidden;
-                    box-shadow:0 20px 60px rgba(0,0,0,.1);margin-bottom:12px;">
+                    box-shadow:0 20px 60px rgba(0,0,0,.1);margin-bottom:16px;">
 
                     <!-- Header con estado -->
                     <div style="background:${yaConfirmada ? 'linear-gradient(135deg,#059669,#047857)' : 'linear-gradient(135deg,#0f172a,#1e3a5f)'};
-                        padding:6px 22px;">
+                        padding:20px 22px;">
                         <div style="display:flex;align-items:center;gap:12px;">
                             <div style="width:46px;height:46px;background:rgba(255,255,255,.15);border-radius:14px;
-                                display:flex;align-items:center;justify-content:center;font-size:20px;">
+                                display:flex;align-items:center;justify-content:center;font-size:22px;">
                                 ${yaConfirmada ? '✅' : '📋'}
                             </div>
                             <div>
-                                <div style="font-size:12px;font-weight:800;color:white;letter-spacing:-.2px;">
+                                <div style="font-size:13px;font-weight:900;color:white;letter-spacing:-.2px;">
                                     ${yaConfirmada ? '¡Cita Confirmada!' : 'Detalles de tu Cita'}
                                 </div>
                                 <div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:2px;">
@@ -20925,21 +21051,21 @@ window.renderPaginaConfirmarCita = async function(token) {
                     <div style="padding:20px 22px;">
 
                         <!-- Párrafo principal -->
-                        <p style="margin:0 0 18px;font-size:12px;color:#0f172a;line-height:1.7;">${parrafo}</p>
+                        <p style="margin:0 0 18px;font-size:15px;color:#0f172a;line-height:1.7;">${parrafo}</p>
 
                         <!-- Detalles restantes -->
                         <div style="background:#f8fafc;border:1px solid #f1f5f9;border-radius:14px;padding:12px 14px;margin-bottom:16px;">
                             <div style="${H3}">Dónde y a qué hora</div>
-                            <div style="font-size:12px;color:#0f172a;line-height:1.6;">
-                                ${cita.nombreCentro ? `<strong>${esc(cita.nombreCentro)}</strong><br>` : ''}
-                                ${cita.direccionCentro ? `${esc(cita.direccionCentro)}<br>` : ''}
-                                ${tandaHora}
+                            <div style="font-size:13px;color:#0f172a;line-height:1.7;">
+                                ${cita.nombreCentro ? `🏥 <strong>${esc(cita.nombreCentro)}</strong><br>` : ''}
+                                ${cita.direccionCentro ? `📍 ${esc(cita.direccionCentro)}<br>` : ''}
+                                🕐 ${tandaHora}
                             </div>
                         </div>
 
-                        <div style="margin-bottom:10px;">
+                        <div style="margin-bottom:16px;">
                             <div style="${H3}">Antes de tu visita</div>
-                            <p style="${PTXT}margin-bottom:10px;">
+                            <p style="${PTXT}margin-bottom:8px;">
                                 Tu turno se asigna por <strong>orden de llegada</strong>, por lo que te pedimos
                                 llegar <strong>30 minutos antes</strong>. Así agilizamos tu registro y facturación.
                             </p>
@@ -20974,7 +21100,7 @@ window.renderPaginaConfirmarCita = async function(token) {
                         </div>` : `
                         <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;
                             padding:14px;text-align:center;">
-                            
+                            <div style="font-size:24px;margin-bottom:6px;">🎉</div>
                             <div style="font-size:13px;font-weight:700;color:#15803d;">
                                 ¡Tu asistencia ya está confirmada!
                             </div>
@@ -20986,9 +21112,9 @@ window.renderPaginaConfirmarCita = async function(token) {
                 </div>
 
                 <!-- Invitación al portal del paciente -->
-                <div style="background:white;border-radius:20px;padding:20px 22px;margin-bottom:12px;
+                <div style="background:white;border-radius:20px;padding:20px 22px;margin-bottom:16px;
                     box-shadow:0 4px 16px rgba(0,0,0,.06);">
-                    <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+                    <div style="font-size:13px;font-weight:900;color:#0f172a;margin-bottom:8px;">
                         ✨ Tu salud, también en tu teléfono
                     </div>
                     <p style="${PTXT}margin-bottom:10px;">
@@ -24230,9 +24356,12 @@ window._cargarRecordEnTarjeta = async function(pacienteId, centroId, spanId) {
     if (!centroId || !pacienteId) return;
     const _k = centroId + '|' + pacienteId;
     let r;
+    const _enPerfil = (typeof _uGet === 'function' ? _uGet(pacienteId) : null)?.recordsPorCentro?.[centroId];
     if (window._pacRecCache && _pacRecCache.has(_k)) {      // ya conocido: sin lectura extra
         const _v = _pacRecCache.get(_k);
         r = _v ? { numeroRecord: _v } : null;
+    } else if (_enPerfil) {                                  // copiado en el perfil: sin lectura extra
+        r = { numeroRecord: String(_enPerfil) };
     } else {
         r = await getRecordPorCentro(pacienteId, centroId);
     }
