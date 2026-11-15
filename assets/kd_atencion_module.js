@@ -368,7 +368,7 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
             + '<span class="kd-atn-pill kd-atn-p-atendida">' + n('atendida') + ' atendidas</span>'
             + '<span class="kd-atn-pill kd-atn-p-cancelada">' + n('cancelada') + ' canceladas</span>'
             + '</div>'
-            + '<div class="kd-atn-card">'
+            + '<div class="kd-atn-card" style="overflow-x: auto;">'
             +   '<div class="kd-atn-head"><span>Paciente</span><span>Récord</span><span>Médico</span><span>Fecha</span><span>Orden</span><span>Estado / Seguimiento</span><span>Registrada por</span><span class="kd-atn-th-acc">Acciones</span></div>'
             +   (lista.length === 0
                     ? '<div class="kd-atn-vacio">No hay citas para los filtros seleccionados</div>'
