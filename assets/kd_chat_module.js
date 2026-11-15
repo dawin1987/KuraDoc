@@ -228,7 +228,7 @@ function renderInboxChatSecretaria() {
     // por el botón del menú (por ejemplo, quedó una navegación pendiente),
     // el chat con los pacientes solo se muestra a la secretaria.
     const rol = appState.currentUserData?.rol;
-    if (rol !== 'secretaria') {
+    if (rol !== 'secretaria' && rol !== 'atencion') {
         mainContent.innerHTML = `
             <div style="text-align:center;padding:60px 20px;color:#64748b;">
                 <div style="font-size:36px;margin-bottom:10px;">🔒</div>
@@ -537,7 +537,7 @@ window._kdAbrirConversacion = function(pacienteId) {
         kdEnviarMensajeChat(centroId, pacienteId, texto, {
             id: appState.currentUser.uid,
             nombre: u.nombre || 'Secretaría',
-            rol: u.rol === 'medico' ? 'medico' : (u.rol === 'adminCentro' ? 'adminCentro' : 'secretaria'),
+            rol: u.rol === 'medico' ? 'medico' : (u.rol === 'adminCentro' ? 'adminCentro' : (u.rol === 'atencion' ? 'atencion' : 'secretaria')),
         }).catch(err => {
             console.error('[kdChat] Error enviando mensaje:', err);
             inputEl.value = texto; // devuelve el texto para que no se pierda
@@ -662,7 +662,7 @@ function _kdActualizarBadgeMenu() {
         // confianza a los pacientes sin que el médico vea la conversación.
         // (Si más adelante también quieres incluir a adminCentro, agrega
         // "|| rol === 'adminCentro'" a la condición de abajo.)
-        if (rol !== 'secretaria') return;
+        if (rol !== 'secretaria' && rol !== 'atencion') return;
 
         // Arranca (una sola vez por sesión) el listener global de la
         // bandeja de hoy, independientemente de si el usuario ha entrado
