@@ -431,7 +431,7 @@ function stopInactivityWatcher() {
                     document.body.classList.remove('app-not-logged');
                     // ── Marcar el rol en el body para CSS responsive ──
                     document.body.dataset.rol = userData.rol || '';
-                    document.body.classList.remove('rol-paciente','rol-medico','rol-admin','rol-secretaria');
+                    document.body.classList.remove('rol-paciente','rol-medico','rol-admin','rol-secretaria','rol-atencion');
                     if (userData.rol) document.body.classList.add('rol-' + userData.rol);
                     clearTimeout(_splashTimeout);
                     _splashStatus('¡Listo! Bienvenido');
@@ -1094,8 +1094,8 @@ async function loadAllData() {
         let usersQuery;
         if (rol === 'paciente' || rol === 'medico') {
             usersQuery = db.collection('users').where('rol', '==', 'medico');
-        } else if (rol === 'secretaria') {
-            // secretaria necesita médicos para filtros y pacientes de sus citas
+        } else if (rol === 'secretaria' || rol === 'atencion') {
+            // secretaria / atención necesitan médicos para filtros y pacientes de sus citas
             usersQuery = db.collection('users').where('rol', '==', 'medico');
         } else if (rol === 'emergencia') {
             // emergencia: solo médicos para el campo "médico que atendió"
@@ -1107,7 +1107,7 @@ async function loadAllData() {
                 .where('centroMedicoId', '==', appState.currentUserData.centroMedicoId || '__sin_centro__');
         } else {
             // admin: todo el staff (médicos + secretarias) — pacientes se cargan lazy
-            usersQuery = db.collection('users').where('rol', 'in', ['medico', 'secretaria', 'admin', 'bioanalista', 'facturador', 'emergencia']);
+            usersQuery = db.collection('users').where('rol', 'in', ['medico', 'secretaria', 'atencion', 'admin', 'bioanalista', 'facturador', 'emergencia']);
         }
 
         const unsubUsers = usersQuery.onSnapshot(snap => {
@@ -1124,7 +1124,7 @@ async function loadAllData() {
         // ─── 4b. PACIENTES RECIENTES (en vivo, solo 20) ────────────
         // Costo: 20 lecturas al iniciar + 1 por cada paciente nuevo.
         // No crece con la cantidad de usuarios registrados.
-        if (rol === 'secretaria' || rol === 'medico' || rol === 'admin') {
+        if (rol === 'secretaria' || rol === 'atencion' || rol === 'medico' || rol === 'admin') {
             let _primerSnapPac = true;
             const unsubPacRec = db.collection('users')
                 .where('rol', '==', 'paciente')
@@ -1175,22 +1175,23 @@ async function loadAllData() {
         }
 
         // Aplicar límite solo para admin/secretaria (tienen mayor volumen)
-        const citasQuery = (rol === 'admin' || rol === 'secretaria')
+        const citasQuery = (rol === 'admin' || rol === 'secretaria' || rol === 'atencion')
             ? citasBase.orderBy('fechaCreacion', 'desc').limit(CITAS_LIMIT)
             : citasBase;
 
         const unsubCitas = citasQuery.onSnapshot(snap => {
+            if (rol === 'atencion' && typeof kdAtencionCambiosCitas === 'function') kdAtencionCambiosCitas(snap, appState.citas);
             appState.citas = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             appState._citasCursor = snap.docs[snap.docs.length - 1] || null;
 
             const r = appState.currentUserData?.rol;
-            if (r === 'secretaria' || r === 'medico') {
+            if (r === 'secretaria' || r === 'atencion' || r === 'medico') {
                 if (!appState.fechaSeleccionadaSecretaria)
                     appState.fechaSeleccionadaSecretaria = fechaHoy();
                 if (typeof window.renderCalendar === 'function') window.renderCalendar();
             }
             // Lazy-load pacientes que aparecen en citas pero no están en memoria
-            if (r === 'medico' || r === 'secretaria' || r === 'admin') {
+            if (r === 'medico' || r === 'secretaria' || r === 'atencion' || r === 'admin') {
                 _loadPacientesByCitas();
             }
             refreshCurrentView();
@@ -1227,7 +1228,7 @@ async function loadAllData() {
 window.cargarMasCitas = async function() {
     if (!appState._citasCursor) return;
     const rol = appState.currentUserData?.rol;
-    if (rol !== 'admin' && rol !== 'secretaria') return;
+    if (rol !== 'admin' && rol !== 'secretaria' && rol !== 'atencion') return;
 
     const btn = document.getElementById('btn-cargar-mas-citas');
     if (btn) { btn.disabled = true; btn.textContent = 'Cargando...'; }
@@ -1289,7 +1290,7 @@ function refreshCurrentView() {
 
         // NAVEGACIÓN
         function initializeApp() {
-            const defaultViews = { admin: 'centros', medico: 'agenda', secretaria: 'citas', paciente: 'inicio', emergencia: 'emergencias', archivista: 'archivo' };
+            const defaultViews = { admin: 'centros', medico: 'agenda', secretaria: 'citas', atencion: 'citas-atencion', paciente: 'inicio', emergencia: 'emergencias', archivista: 'archivo' };
             renderMobileNav();
 
             // ── Restaurar dónde estaba el usuario antes de recargar ────
@@ -1926,6 +1927,7 @@ function renderMobileNav() {
             { icon: '🏢', label: 'Centros', view: 'centros' }, 
             { icon: '👨‍⚕️', label: 'Médicos', view: 'medicos' },
             { icon: '👥', label: 'Secretarias', view: 'secretarias-admin' },
+            { icon: '🎧', label: 'Atención', view: 'atencion-admin' },
             { icon: '🧾', label: 'Personal', view: 'personal-admin' },
             { icon: '🧪', label: 'Especialidades', view: 'especialidades' },
             { icon: '📢', label: 'Anuncios', view: 'anuncios-admin' },
@@ -1944,6 +1946,12 @@ function renderMobileNav() {
             { icon: '💰', label: 'Reporte', view: 'reporte-financiero' }, // Nuevo ítem
             { icon: '📊', label: 'dashboard', view: 'dashboard' } 
             
+        ],
+        atencion: [
+            { icon: '📋', label: 'Citas', view: 'citas-atencion' },
+            { icon: '👥', label: 'Pacientes', view: 'pacientes' },
+            { icon: '👨‍⚕️', label: 'Médicos', view: 'medicos-atencion' },
+            { icon: '💰', label: 'Reporte', view: 'reporte-financiero' }
         ],
         emergencia: [
             { icon: '🚨', label: 'Sala', view: 'emergencias' },
@@ -2077,6 +2085,9 @@ function navigateTo(view) {
         case 'mis-citas': renderMisCitas(); break;
         case 'favoritos': renderFavoritos(); break;
         case 'citas': renderCitas(); break; // Esta la usa la secretaria
+        case 'citas-atencion': if (typeof renderCitasAtencion === 'function') renderCitasAtencion(); break;
+        case 'atencion-admin': if (typeof renderAtencionAdmin === 'function') renderAtencionAdmin(); break;
+        case 'medicos-atencion': if (typeof renderMedicosAtencion === 'function') renderMedicosAtencion(); break;
         case 'pacientes':
             if (appState.currentUserData?.rol === 'medico' && _isSuspendido()) { _mostrarModalBloqueado('👥 Gestión de Pacientes'); return; }
             renderPacientes(); break;
@@ -3725,6 +3736,24 @@ function renderCitas() {
 
 
 
+/* Nombre del centro para el cual trabaja el usuario actual (secretaria / atención).
+   Fuente: users/{uid}.centroMedicoId → se busca en centrosMedicos (siempre actual);
+   si no se encuentra, se usa users/{uid}.centroNombre que guarda crearPersonal. */
+function kdNombreCentroUsuario() {
+    const u = appState.currentUserData || {};
+    const c = (appState.centrosMedicos || []).find(x => x.id === u.centroMedicoId);
+    return (c && c.nombre) || u.centroNombre || '';
+}
+function kdHtmlCentroTrabajo() {
+    const nombre = kdNombreCentroUsuario();
+    if (!nombre) return '';
+    const e = String(nombre).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    return `<div class="kd-citas-centro" title="Centro médico: ${e}">
+                        <span class="kd-citas-centro-ico">🏢</span>
+                        <div class="kd-citas-centro-txt"><small>Centro médico</small><strong>${e}</strong></div>
+                    </div>`;
+}
+
 function renderCabeceraCitas() {
     const contenedor = document.getElementById('cabecera-citas');
     // Si el contenedor no existe en esta pantalla, salimos de la función sin dar error
@@ -3740,14 +3769,17 @@ function renderCabeceraCitas() {
 
     document.getElementById('cabecera-citas').innerHTML = `
         <div class="page-header" style="background: #14908cc4; padding: 10px 0px 0px 0px; border-radius: 0px 0px 0px 0px; margin-bottom: 10px; box-shadow: var(--shadow);">
-            <div style="border-radius: 0px 0px 0px 0px; background: #fcfcfc; width: 100%; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-                <div style=" margin-left: 5px;">
+            <div class="kd-citas-box">
+                <div class="kd-citas-top">
+                <div class="kd-citas-tit" style="margin-left: 5px;">
                     <h1 class="page-title" style="margin:0; font-size: 16px;">Gestión de Recepción</h1>
                     <p id="texto-fecha-dinamico" style="color: #64748b; font-size: 13px; margin-top: 2px; margin-bottom: 3px;">
                         ${appState.fechaInicioRango && appState.fechaFinRango 
                             ? `📂 Rango: ${appState.fechaInicioRango} al ${appState.fechaFinRango}`
                             : (appState.verTodasLasCitas ? 'Histórico Completo' : `📅 : ${fechaTexto}`)}
                     </p>
+                </div>
+                    ${kdHtmlCentroTrabajo()}
                 </div>
 
                 <div class="citas-filtros-bar">
@@ -5383,6 +5415,19 @@ window._guardarReprogramacion = async function(citaId) {
             ? (medico?.cupoVespertina || 15)
             : (medico?.cupoMatutina  || 15);
 
+        // Reglas de agendamiento (tanda cerrada / cita duplicada) — ver kd_reglas_citas.js
+        if (typeof kdTandaCerrada === 'function' && kdTandaCerrada(nuevaFecha, nuevaTanda)) {
+            _alert('⏰ La tanda ' + nuevaTanda + ' de esa fecha ya cerró (' + (nuevaTanda === 'matutina' ? '12:00 pm' : '6:00 pm') + '). Elige otra tanda u otro día.', 'error');
+            return;
+        }
+        if (typeof kdBuscarCitaDuplicada === 'function') {
+            const dup = await kdBuscarCitaDuplicada(cita.pacienteId, cita.medicoId, nuevaFecha, nuevaTanda, citaId);
+            if (dup) {
+                _alert('⚠️ El paciente ya tiene otra cita con este médico en esa fecha y tanda. Elige otra fecha u otra tanda.', 'error');
+                return;
+            }
+        }
+
         if (otrasEnTanda >= cupoMax) {
             _alert(`⚠️ No hay cupo disponible para la tanda ${nuevaTanda} en esa fecha (${otrasEnTanda}/${cupoMax}). Elige otra fecha o tanda.`, 'error');
             return;
@@ -5409,7 +5454,9 @@ window._guardarReprogramacion = async function(citaId) {
         actualizar.enviarRecordatorioWA = _nw.enviarRecordatorio;
         actualizar.recordatorioWAOmitidoMotivo = _nw.motivoRecordatorio;
 
-        await db.collection('citas').doc(citaId).update(actualizar);
+        { const _upd = db.collection('citas').doc(citaId).update(actualizar);
+          _upd.catch(() => {});
+          await Promise.race([_upd, new Promise(res => setTimeout(res, navigator.onLine ? 8000 : 1200))]); }
         if (!navigator.onLine) {
             _alert('📴 Sin conexión: la reprogramación se guardó en este dispositivo y se sincronizará sola cuando vuelva el internet.', 'info');
         } else {
@@ -7359,7 +7406,7 @@ async function procesarReservaCita(medicoId) {
     if (!tipoCita) {
         if (selectTipo) { selectTipo.style.borderColor = '#dc2626'; selectTipo.focus(); }
         alert('⚠️ Por favor seleccione el tipo de consulta antes de confirmar.');
-        return;
+        return false;
     }
     // ─────────────────────────────────────────────────────────
 
@@ -7419,6 +7466,8 @@ async function procesarReservaCita(medicoId) {
         seguroMedicoPaciente: datosPaciente.seguroMedico || '',
         generoPaciente: datosPaciente.genero || '',
         creadaPor: appState.currentUser.uid,
+        creadaPorNombre: appState.currentUserData?.nombre || '',
+        creadaPorRol: appState.currentUserData?.rol || '',
         fechaCreacion: firebase.firestore.FieldValue.serverTimestamp(),
         // ── Datos para notificación WhatsApp ─────────────────
         telefonoPaciente:       datosPaciente.telefono || '',
@@ -7440,7 +7489,7 @@ async function procesarReservaCita(medicoId) {
     });
 
     try {
-        const docRef = await db.collection('citas').add(nuevaCita);
+        const docRef = await _kdAgregarCita(nuevaCita);
         
         // 3. LIMPIEZA Y NAVEGACIÓN
         appState.pacienteTemporalParaCita = null;
@@ -8535,6 +8584,8 @@ function buildDays(elem) {
     
     if (rol === 'secretaria') {
         conteoCitas = getConteoCitasPorDiaSecretaria();
+    } else if (rol === 'atencion' && typeof getConteoCitasPorDiaAtencion === 'function') {
+        conteoCitas = getConteoCitasPorDiaAtencion();
     } else if (rol === 'medico') {
         conteoCitas = getConteoCitasPorDiaMedico();
     }
@@ -8560,7 +8611,7 @@ function buildDays(elem) {
 
         // 👉 RESALTAR DÍA SELECCIONADO (SECRETARIA O MEDICO)
         // Añadimos la condición para el médico usando appState.agendaDate
-        const isSelectedSecretaria = (rol === 'secretaria' && appState.fechaSeleccionadaSecretaria === fechaCelda);
+        const isSelectedSecretaria = ((rol === 'secretaria' || rol === 'atencion') && appState.fechaSeleccionadaSecretaria === fechaCelda);
         const isSelectedMedico = (rol === 'medico' && appState.agendaDate === fechaCelda);
 
         if (isSelectedSecretaria || isSelectedMedico) {
@@ -8611,6 +8662,18 @@ function buildDays(elem) {
      
     }
 
+
+            // ATENCIÓN AL USUARIO: mismo comportamiento que secretaria, hacia su propia vista
+            else if (rol === 'atencion') {
+                appState.fechaSeleccionadaSecretaria = fechaCelda;
+                appState.verTodasLasCitas = false;
+                appState.fechaInicioRango = '';
+                appState.fechaFinRango = '';
+                appState.filtroBusquedaTexto = '';
+                appState.filtroMedicoSecretaria = 'TODAS';
+                if (typeof kdAtencionRefrescar === 'function') kdAtencionRefrescar();
+                if (window.innerWidth <= 1024) closeSidebar();
+            }
 
             // NUEVA LÓGICA PARA MÉDICO:
             else if (rol === 'medico') {
@@ -20174,14 +20237,14 @@ function _clearPacientesCache() {
 // ╚══════════════════════════════════════════════════════════════════╝
 
 // Pestaña activa (persiste mientras el modal está abierto)
-let _fpTabActiva = 'expediente';
+let _fpTabActiva = (appState.currentUserData?.rol === 'atencion') ? 'info' : 'expediente';
 let _fpPacienteActual = null;
 
 window.abrirFichaPaciente = function(pacienteUid) {
     const p = appState.users.find(u => u.uid === pacienteUid || u.id === pacienteUid);
     if (!p) return;
     _fpPacienteActual = p;
-    _fpTabActiva = 'expediente';
+    _fpTabActiva = (appState.currentUserData?.rol === 'atencion') ? 'info' : 'expediente';
 
     // Crear el overlay si no existe
     let overlay = document.getElementById('fp-overlay');
@@ -20417,7 +20480,7 @@ window.abrirFichaPaciente = function(pacienteUid) {
     }
 
     _fpPacienteActual = p;
-    _fpTabActiva = 'expediente';
+    _fpTabActiva = (appState.currentUserData?.rol === 'atencion') ? 'info' : 'expediente';
     _kdGuardarUltimaFicha(p.uid || p.id);
 
     let overlay = document.getElementById('fp-overlay');
@@ -24400,7 +24463,7 @@ window.procesarReservaCita = async function(medicoId) {
 
     try {
         const { numeroRecord, continuar } = await _verificarRecordParaCita(pacienteId, medicoId);
-        if (!continuar) return; // Usuario canceló
+        if (!continuar) return false; // Usuario canceló (el formulario debe seguir abierto)
 
         // Guardar el récord en el estado temporal para que lo use guardarCita
         appState._recordParaCita = numeroRecord || '';
@@ -24410,7 +24473,7 @@ window.procesarReservaCita = async function(medicoId) {
     }
 
     // Ahora guardar la cita — interceptamos db.collection('citas').add() con patch
-    await _guardarCitaConRecord(medicoId);
+    return await _guardarCitaConRecord(medicoId);
 };
 
 // Versión de guardar cita que incluye el número de récord
@@ -24444,6 +24507,33 @@ async function _contarCitasParaOrden(medicoId, fechaStr, tanda) {
     ).length;
 }
 
+/* Crea la cita sin quedarse colgado: Firestore solo resuelve add() cuando el servidor
+   confirma, y con internet lento u ocasionalmente sin red la promesa tarda o nunca
+   llega, aunque la cita ya aparece en la lista local. Se espera la confirmación un
+   tiempo razonable; si no llega, se continúa (queda guardada y se sincroniza sola)
+   y cualquier rechazo posterior del servidor se avisa. */
+async function _kdAgregarCita(datos) {
+    const ref = db.collection('citas').doc();
+    const escritura = ref.set(datos);
+    let terminado = false;
+    escritura.catch(err => {
+        if (!terminado) return;                  // si falló a tiempo, lo reporta quien llamó
+        console.error('[Cita] El servidor rechazó la cita:', err);
+        const m = '❌ La cita no pudo guardarse en el servidor: ' + (err && err.message || err);
+        if (typeof window._mostrarToast === 'function') window._mostrarToast(m, 'error'); else alert(m);
+    });
+    const espera = navigator.onLine ? 8000 : 1200;
+    let confirmada = false;
+    escritura.then(() => { confirmada = true; }, () => {});
+    try {
+        await Promise.race([escritura, new Promise(res => setTimeout(res, espera))]);
+    } finally { terminado = true; }
+    if (!confirmada && navigator.onLine && typeof window._mostrarToast === 'function') {
+        window._mostrarToast('⏳ Conexión lenta: la cita quedó guardada en este dispositivo y se confirmará sola en cuanto responda el servidor.', 'info');
+    }
+    return ref;
+}
+
 async function _guardarCitaConRecord(medicoId) {
     const medico = _uGet(medicoId);
     const TIPOS_CITA_LABEL = {
@@ -24458,7 +24548,7 @@ async function _guardarCitaConRecord(medicoId) {
     if (!tipoCita) {
         if (selectTipo) { selectTipo.style.borderColor = '#dc2626'; selectTipo.focus(); }
         alert('⚠️ Por favor seleccione el tipo de consulta antes de confirmar.');
-        return;
+        return false;
     }
 
     const esSecretaria = !!appState.pacienteTemporalParaCita;
@@ -24507,6 +24597,8 @@ async function _guardarCitaConRecord(medicoId) {
         seguroMedicoPaciente: datosPaciente.seguroMedico || '',
         generoPaciente: datosPaciente.genero || '',
         creadaPor: appState.currentUser.uid,
+        creadaPorNombre: appState.currentUserData?.nombre || '',
+        creadaPorRol: appState.currentUserData?.rol || '',
         fechaCreacion: firebase.firestore.FieldValue.serverTimestamp(),
         telefonoPaciente:       datosPaciente.telefono || '',
         nombreMedico:           medico.nombre || '',
@@ -24533,7 +24625,7 @@ async function _guardarCitaConRecord(medicoId) {
     Object.keys(nuevaCita).forEach(k => { if (nuevaCita[k] === undefined) nuevaCita[k] = null; });
 
     try {
-        const docRef = await db.collection('citas').add(nuevaCita);
+        const docRef = await _kdAgregarCita(nuevaCita);
         appState.pacienteTemporalParaCita = null;
         appState._recordParaCita = '';
         closeModal();
@@ -24563,7 +24655,9 @@ async function _guardarCitaConRecord(medicoId) {
     } catch(e) {
         console.error('[Cita+Record] Error:', e);
         alert('❌ No se pudo guardar la cita: ' + e.message);
+        return false;
     }
+    return true;
 }
 
 // ╚══════════════════════════════════════════════════════════════════╝
@@ -24744,6 +24838,9 @@ window.abrirModalNuevaCitaInteligente=function(){
   var mt=document.getElementById('nci-mtrig');if(mt)mt.classList.remove('on');
   var mtt=document.getElementById('nci-mtxt');if(mtt)mtt.textContent='\u2014 Seleccione un m\u00e9dico \u2014';
   nciCargarMeds();
+  N._busy=false;N._intento=false;
+  var okb=document.getElementById('nci-ok');
+  if(okb){okb.textContent='\u2713 Confirmar Cita';okb.disabled=false;}
   nciRD();
   nciUB();
   var ov=document.getElementById('nci-ov');
@@ -24929,7 +25026,7 @@ function nciCargarMeds(){
     window._nciMeds=appState.users.filter(function(m){return m.rol==='medico';});
     nciFM('');return;
   }
-  if(u&&u.rol==='secretaria'){
+  if(u&&(u.rol==='secretaria'||u.rol==='atencion')){
     ids=Array.isArray(u.medicoAsignadoId)?u.medicoAsignadoId:(u.medicoAsignadoId?[u.medicoAsignadoId]:[]);
   } else if(u&&u.rol==='medico'){
     ids=[u.uid||u.id];
@@ -25108,17 +25205,57 @@ window.nciET=function(t){
 };
 
 /* ════ BOTÓN CONFIRMAR ════ */
+/* Campos obligatorios del modal, en el orden en que se ven en pantalla */
+function nciFaltantes(){
+  var f=[];
+  if(!N.pac)f.push({k:'pac',t:'1 \u00b7 Paciente'});
+  if(!N.med)f.push({k:'med',t:'2 \u00b7 M\u00e9dico'});
+  if(!N.f)  f.push({k:'fec',t:'3 \u00b7 Fecha disponible'});
+  if(!N.t)  f.push({k:'tan',t:'4 \u00b7 Tanda'});
+  return f;
+}
+function nciDestino(k){
+  if(k==='pac')return document.querySelector('#nci-ov .nci-sw');
+  if(k==='med')return document.getElementById('nci-mtrig');
+  return document.getElementById('nci-rcol');
+}
+/* Muestra "Falta elegir: ..." junto al bot\u00f3n; si ya se intent\u00f3 guardar, resalta los campos */
+function nciPintarFaltantes(falt){
+  var ft=document.querySelector('#nci-ov .nci-ft');if(!ft)return;
+  var el=document.getElementById('nci-faltan');
+  if(!el){el=document.createElement('div');el.id='nci-faltan';ft.insertBefore(el,ft.firstChild);}
+  el.className='nci-faltan'+(N._intento?' alerta':'');
+  el.style.display=falt.length?'block':'none';
+  el.textContent=falt.length?'Falta elegir: '+falt.map(function(x){return x.t;}).join('   \u00b7   '):'';
+  ['pac','med','fec','tan'].forEach(function(k){
+    var d=nciDestino(k);if(d)d.classList.remove('nci-falta');
+  });
+  if(N._intento)falt.forEach(function(x){var d=nciDestino(x.k);if(d)d.classList.add('nci-falta');});
+}
 function nciUB(){
   var b=document.getElementById('nci-ok');if(!b)return;
-  var ok=!!(N.pac&&N.med&&N.f&&N.t);
-  b.classList.toggle('listo',ok);b.disabled=!ok;
+  var falt=nciFaltantes();
+  b.classList.toggle('listo',!falt.length);
+  /* El bot\u00f3n solo se bloquea mientras guarda. Si falta algo, al pulsarlo se indica qu\u00e9. */
+  if(!N._busy)b.disabled=false;
+  nciPintarFaltantes(falt);
 }
 
 /* ════ GUARDAR (reutiliza procesarReservaCita) ════ */
 window.nciGuardar=async function(){
-  if(!N.pac||!N.med||!N.f||!N.t)return;
+  if(N._busy)return;                       /* ya hay un guardado en curso: ignorar clics repetidos */
+  var falt=nciFaltantes();
+  if(falt.length){                         /* faltan campos: NO se toca el texto del bot\u00f3n */
+    N._intento=true;
+    nciPintarFaltantes(falt);
+    var d=nciDestino(falt[0].k);
+    if(d&&d.scrollIntoView)d.scrollIntoView({block:'nearest',behavior:'smooth'});
+    if(falt[0].k==='pac'){var pi=document.getElementById('nci-pi');if(pi)pi.focus();}
+    return;
+  }
   var b=document.getElementById('nci-ok');
-  b.disabled=true;b.textContent='Guardando...';
+  N._busy=true;
+  b.disabled=true;b.textContent='Guardando...';          /* el texto cambia SOLO al pulsar con todo completo */
   selectedDate=N.f;
   selectedTanda=N.t;
   appState.pacienteTemporalParaCita=N.pac;
@@ -25140,16 +25277,22 @@ window.nciGuardar=async function(){
   } else {
     window._nciCamposExtra={tipoAgendamiento:'AUTO'};
   }
+  var guardada=false;
   try{
-    await procesarReservaCita(mid);
-    nciCerrar();
+    var r=await procesarReservaCita(mid);
+    /* false = bloqueada por una regla, cancelada en el r\u00e9cord o fall\u00f3: el formulario sigue abierto */
+    guardada=(r!==false);
+    if(guardada)nciCerrar();
   }catch(e){
     alert('Error al guardar la cita: '+e.message);
-    b.disabled=false;b.textContent='\u2713 Confirmar Cita';b.classList.add('listo');
   }finally{
     if(tmp){var el=document.getElementById('selectTipoCita');if(el)el.remove();}
-    window._nciInterconsulta=false;
-    window._nciCamposExtra=null;
+    if(guardada){window._nciInterconsulta=false;window._nciCamposExtra=null;}
+    N._busy=false;
+    /* El modal se reutiliza: el bot\u00f3n SIEMPRE vuelve a su estado normal */
+    b.textContent='\u2713 Confirmar Cita';
+    b.disabled=false;
+    nciUB();
   }
 };
 
