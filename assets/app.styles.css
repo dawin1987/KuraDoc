@@ -4804,26 +4804,84 @@ Specificity: (0,2,0)
    Antes vivía como estilos inline en app_logic.js (cabecera de citas).
    Se extrae a clases para poder controlar el modo responsive desde aquí.
    ══════════════════════════════════════════════════════════════════════ */
+/* ── Cabecera: fila superior (título/fecha ←→ centro) + barra de filtros ── */
+.kd-citas-box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    background: #fcfcfc;
+    padding: 6px 8px 8px;
+    box-sizing: border-box;
+}
+.kd-citas-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+}
+.kd-citas-tit { min-width: 0; }
+.kd-citas-centro {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 1 auto;
+    max-width: 50%;
+    min-width: 0;
+    padding: 5px 12px;
+    background: #f0fdfa;
+    border: 1px solid #99f6e4;
+    border-radius: 10px;
+}
+.kd-citas-centro-ico { font-size: 18px; line-height: 1; flex-shrink: 0; }
+.kd-citas-centro-txt { min-width: 0; text-align: right; }
+.kd-citas-centro-txt small {
+    display: block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    color: #0f766e;
+}
+.kd-citas-centro-txt strong {
+    display: block;
+    font-size: 13px;
+    color: #134e4a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Barra de filtros: SIEMPRE en una sola fila horizontal ──
+   Los campos se encogen/estiran según el ancho disponible y nunca bajan de línea.
+   En pantallas muy estrechas la barra se desplaza de lado en vez de apilarse. */
 .citas-filtros-bar {
     display: flex;
-    gap: 10px;
-    flex-grow: 1;
-    max-width: 850px;
+    flex-wrap: nowrap;
     align-items: center;
-    flex-wrap: wrap;
-    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    box-sizing: border-box;
 }
 .citas-buscador-input {
-    width: 30%;
+    flex: 1 1 180px;          /* absorbe el espacio sobrante */
+    width: auto;
+    min-width: 90px;
 }
 .citas-rango-wrap {
     display: flex;
     align-items: center;
     gap: 5px;
+    flex: 0 1 auto;
+    min-width: 0;
     background: #f8fafc;
     padding: 5px;
     border-radius: 5px;
     border: 1px solid #e2e8f0;
+    box-sizing: border-box;
 }
 .citas-rango-label {
     font-size: 10px;
@@ -4832,20 +4890,25 @@ Specificity: (0,2,0)
     white-space: nowrap;
 }
 .citas-fecha-input {
+    flex: 1 1 112px;
+    width: 112px;
+    min-width: 0;
     font-size: 11px;
     padding: 4px;
     border: 1px solid #cbd5e1;
     border-radius: 4px;
 }
 .citas-btn-todas {
-    margin-right: 3px;
+    flex: 0 0 auto;
+    margin-right: 0;
     border-radius: 3px;
-    padding: 4px;
-    width: 100px;
+    padding: 5px 10px;
+    width: auto;
     white-space: nowrap;
     font-size: 13px;
 }
 .citas-btn-nueva {
+    flex: 0 0 auto;
     background: #2A9D8F;
     color: white;
     border: none;
@@ -4863,32 +4926,31 @@ Specificity: (0,2,0)
 }
 .citas-btn-nueva:hover { opacity: .85; }
 
-/* ── Responsive: buscador y rango a 100%, botones abajo ── */
-@media (max-width: 768px) {
+/* ── Tabletas: se compactan los espacios, la fila sigue siendo una sola ── */
+@media (max-width: 900px) {
+    .citas-filtros-bar { gap: 6px; }
+    .citas-rango-wrap { gap: 3px; padding: 4px; }
+    .citas-fecha-input { flex-basis: 96px; width: 96px; font-size: 10.5px; }
+    .citas-btn-todas { padding: 5px 8px; font-size: 12px; }
+    .citas-btn-nueva { padding: 6px 12px; font-size: 12px; }
+}
+
+/* ── Móviles: la fila no se apila; si no cabe, se desplaza de lado ── */
+@media (max-width: 640px) {
+    .kd-citas-box { padding: 6px; }
+    .kd-citas-centro { max-width: 46%; padding: 4px 8px; gap: 6px; }
+    .kd-citas-centro-ico { font-size: 15px; }
+    .kd-citas-centro-txt small { display: none; }
+    .kd-citas-centro-txt strong { font-size: 12px; }
     .citas-filtros-bar {
-        margin-bottom: 5px;
-        max-width: 100%;
-        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 3px;
+        scrollbar-width: thin;
     }
-    .citas-buscador-input {
-        width: 100% !important;
-        order: 1;
-    }
-    .citas-rango-wrap {
-        width: 100%;
-        justify-content: space-between;
-        order: 2;
-        box-sizing: border-box;
-    }
-    .citas-rango-wrap .citas-fecha-input {
-        flex: 1;
-        min-width: 0;
-    }
+    .citas-buscador-input { flex: 1 0 130px; }
+    .citas-rango-wrap,
     .citas-btn-todas,
-    .citas-btn-nueva {
-        order: 3;
-        flex: 1;
-        width: auto;
-        justify-content: center;
-    }
+    .citas-btn-nueva { flex-shrink: 0; }
+    .citas-rango-label { font-size: 9px; }
 }
