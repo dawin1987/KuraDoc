@@ -7138,6 +7138,10 @@ function openModalSolicitarCita(medicoId, pacienteIdOpcional = null) {
     }
 
 
+    // ¿Vino desde el modal de detalles del médico? (se consume: solo vale para esta apertura)
+    const volverDetalleId = (window._detalleVolverId === medicoId) ? medicoId : null;
+    window._detalleVolverId = null;
+
     // Reiniciamos selecciones
     selectedDate = null;
     selectedTanda = null;
@@ -7146,7 +7150,10 @@ function openModalSolicitarCita(medicoId, pacienteIdOpcional = null) {
         <div class="modal-overlay" onclick="closeModal(event)">
             <div class="modal" onclick="event.stopPropagation()" style="max-width: 550px;max-height: calc(110vh - 90px);">
                 <div class="modal-header" style="padding: 7px 10px 2px 10px;">
-                    <h2 class="modal-title">${pacienteIdOpcional ? 'Reservar cita' : 'Reservar Cita'}</h2>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        ${volverDetalleId ? `<button type="button" class="btn btn-secondary btn-sm" style="padding:3px 9px;font-size:12px;" onclick="volverADetalleMedico('${volverDetalleId}')" title="Volver a los detalles del médico">← Volver</button>` : ''}
+                        <h2 class="modal-title">${pacienteIdOpcional ? 'Reservar cita' : 'Reservar Cita'}</h2>
+                    </div>
                     <button class="modal-close" onclick="closeModal()">×</button>
                 </div>
 
@@ -7227,7 +7234,8 @@ function openModalSolicitarCita(medicoId, pacienteIdOpcional = null) {
                         <select id="selectTipoCita" class="form-input"
                             style="width:100%;padding:7px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:11px;background:white;color:#0f172a;font-weight:600;"
                             onchange="this.style.borderColor=this.value?'#16a34a':'#e2e8f0'">
-                            <option value="primera-vez" selected>Primera Vez (Diagnóstico)</option>
+                            <option value="" selected disabled>Seleccione el tipo de consulta…</option>
+                            <option value="primera-vez">Primera Vez (Diagnóstico)</option>
                             <option value="seguimiento">Seguimiento o Control</option>
                             <option value="resultados">Entrega de Resultados</option>
                             <option value="prequirurgica">Evaluación Prequirúrgica</option>
@@ -7235,7 +7243,7 @@ function openModalSolicitarCita(medicoId, pacienteIdOpcional = null) {
                     </div>
 
                     <div style="width: 100%; display: flex; gap: 12px; margin-top: 15px;">
-                        <button id="btnConfirmarCita" class="btn btn-primary" style="flex: 1;" disabled onclick="procesarReservaCita('${medico.id}')">Confirmar Cita</button>
+                        <button id="btnConfirmarCita" class="btn btn-primary" style="flex: 1;" onclick="kdConfirmarPaciente('${medico.id}')">Confirmar Cita</button>
                         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
                     </div>
                 </div>
@@ -7245,6 +7253,13 @@ function openModalSolicitarCita(medicoId, pacienteIdOpcional = null) {
 
     renderCalendario(medicoId, new Date());
 }
+
+// Cierra Reservar Cita (sin dejar nada en segundo plano) y reabre los detalles del médico
+window.volverADetalleMedico = function (medicoId) {
+    document.getElementById('modalContainer').innerHTML = '';
+    appState.pacienteTemporalParaCita = null;
+    abrirDetalleMedico(medicoId);
+};
 
 function renderCalendario(medicoId, fechaBase) {
     const medico = _uGet(medicoId);
@@ -7308,7 +7323,7 @@ function cambiarMes(medicoId, dir) {
 async function seleccionarFechaCita(medicoId, fechaStr) {
     selectedDate = fechaStr;
     selectedTanda = null;
-    document.getElementById('btnConfirmarCita').disabled = true;
+    // (el botón ya no se bloquea: si falta algo, kdConfirmarPaciente resalta el campo)
 
     // Actualizar UI del calendario para marcar el día activo
     const todosLosDias = document.querySelectorAll('.calendar-day');
@@ -7365,6 +7380,7 @@ async function seleccionarFechaCita(medicoId, fechaStr) {
     }
 
     tandaGrid.innerHTML = htmlTandas;
+    tandaGrid.classList.toggle('una-tanda', tandaGrid.querySelectorAll('.tanda-card').length === 1);
 }
 
 function marcarTanda(medicoId, tanda) {
@@ -7386,7 +7402,7 @@ function marcarTanda(medicoId, tanda) {
         </div>
     `;
     
-    document.getElementById('btnConfirmarCita').disabled = false;
+    if (typeof window.kdRefrescarFaltantesPac === 'function') window.kdRefrescarFaltantesPac();
 }
 
 
@@ -21748,7 +21764,7 @@ window.abrirDetalleMedico = async function(medicoId) {
 
     const waNum = (m.telefono||'').replace(/\D/g,'');
     document.getElementById('mmd-actions').innerHTML = `
-        <button class="mmd-btn-main" onclick="cerrarDetalleMedico();openModalSolicitarCita('${medicoId}')">
+        <button class="mmd-btn-main" onclick="window._detalleVolverId='${medicoId}';cerrarDetalleMedico();openModalSolicitarCita('${medicoId}')">
             📅 Reservar Cita
         </button>
         ${waNum ? `<button class="mmd-btn-wa" onclick="window.open('https://wa.me/${waNum}','_blank')" title="WhatsApp"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></button>` : ''}
@@ -25010,6 +25026,19 @@ window.cerrarModalNuevoPaciente=function(){
   }
 };
 
+/* El listado de pacientes y el de médicos comparten espacio: mientras se buscan pacientes, el de médicos cede */
+(function(){
+  function enlazar(){
+    var dd=document.getElementById('nci-drop');if(!dd||dd._kdObs)return;
+    var L=dd.closest('.nci-L');if(!L)return;
+    dd._kdObs=new MutationObserver(function(){
+      L.classList.toggle('buscando',dd.style.display!=='none'&&dd.style.display!=='');
+    });
+    dd._kdObs.observe(dd,{attributes:true,attributeFilter:['style']});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',enlazar);else enlazar();
+})();
+
 /* cierre de dropdowns fuera */
 document.addEventListener('click',function(e){
   var dd=document.getElementById('nci-drop');
@@ -25051,7 +25080,7 @@ window.nciFM=function(q){
     var foto=m.fotoUrl
       ?('<img src="'+m.fotoUrl+'" class="nci-mf" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">')
       :('<div class="nci-mf" style="background:#dbeafe;color:#1d4ed8;">'+ini+'</div>');
-    return '<div class="nci-mo" onclick="nciEM(\''+mid+'\')">'+foto+
+    return '<div class="nci-mo'+(sel?' sel':'')+'" onclick="nciEM(\''+mid+'\')">'+foto+
       '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:#0f172a;">'+m.nombre+'</div>'+
       '<div style="font-size:11px;color:#64748b;">'+(m.especialidad||'General')+'</div></div>'+
       (sel?'<span style="color:#16a34a;font-size:16px;margin-left:auto;">&#10003;</span>':'')+
@@ -25144,7 +25173,7 @@ window.nciCM=function(dir){N.nav.setMonth(N.nav.getMonth()+dir);nciRC();};
 
 /* ════ ELEGIR FECHA → TANDAS ════ */
 window.nciEF=async function(fS){
-  N.f=fS;N.t=null;nciRC();
+  N.f=fS;N.t=null;nciRC();nciUB();
   var tw=document.getElementById('nci-tw');
   var tg=document.getElementById('nci-tg');
   if(!tw||!tg)return;
@@ -25217,8 +25246,11 @@ function nciFaltantes(){
 }
 function nciDestino(k){
   if(k==='pac')return document.querySelector('#nci-ov .nci-sw');
-  if(k==='med')return document.getElementById('nci-mtrig');
-  return document.getElementById('nci-rcol');
+  if(k==='med')return document.getElementById('nci-mlist');
+  if(!N.med)return document.getElementById('nci-rcol');          /* sin médico: se resalta la columna vacía */
+  if(k==='fec')return document.getElementById('nci-cw');          /* solo el calendario */
+  var tw=document.getElementById('nci-tw');                       /* solo el bloque de tandas (si ya se ve) */
+  return (tw&&tw.style.display!=='none')?tw:null;
 }
 /* Muestra "Falta elegir: ..." junto al bot\u00f3n; si ya se intent\u00f3 guardar, resalta los campos */
 function nciPintarFaltantes(falt){
@@ -25228,10 +25260,11 @@ function nciPintarFaltantes(falt){
   el.className='nci-faltan'+(N._intento?' alerta':'');
   el.style.display=falt.length?'block':'none';
   el.textContent=falt.length?'Falta elegir: '+falt.map(function(x){return x.t;}).join('   \u00b7   '):'';
-  ['pac','med','fec','tan'].forEach(function(k){
-    var d=nciDestino(k);if(d)d.classList.remove('nci-falta');
+  var marcados=falt.map(function(x){return nciDestino(x.k);}).filter(Boolean);
+  document.querySelectorAll('#nci-ov .nci-falta').forEach(function(d){
+    if(!N._intento||marcados.indexOf(d)<0)d.classList.remove('nci-falta','kd-anim');
   });
-  if(N._intento)falt.forEach(function(x){var d=nciDestino(x.k);if(d)d.classList.add('nci-falta');});
+  if(N._intento)marcados.forEach(function(d){d.classList.add('nci-falta');});
 }
 function nciUB(){
   var b=document.getElementById('nci-ok');if(!b)return;
@@ -25249,6 +25282,10 @@ window.nciGuardar=async function(){
   if(falt.length){                         /* faltan campos: NO se toca el texto del bot\u00f3n */
     N._intento=true;
     nciPintarFaltantes(falt);
+    var an=document.querySelectorAll('#nci-ov .nci-falta');          /* animación breve en cada pulsación */
+    an.forEach(function(d){d.classList.remove('kd-anim');});
+    void document.body.offsetWidth;
+    an.forEach(function(d){d.classList.add('kd-anim');});
     var d=nciDestino(falt[0].k);
     if(d&&d.scrollIntoView)d.scrollIntoView({block:'nearest',behavior:'smooth'});
     if(falt[0].k==='pac'){var pi=document.getElementById('nci-pi');if(pi)pi.focus();}
