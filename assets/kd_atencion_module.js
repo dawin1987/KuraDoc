@@ -63,7 +63,18 @@
         s.id = 'kd-atn-styles';
         s.textContent = `
 .kd-atn-resumen{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;font-size:12px;color:#475569}
-.kd-atn-pill{padding:3px 10px;border-radius:999px;border:1px solid;font-weight:700;font-size:11px}
+.kd-atn-pill{padding:3px 10px;border-radius:999px;border:1px solid;font-weight:700;font-size:11px;
+  font-family:inherit;line-height:1.4;cursor:pointer;transition:opacity .15s,box-shadow .15s,transform .1s}
+.kd-atn-pill:hover{transform:translateY(-1px)}
+.kd-atn-pill:focus-visible{outline:2px solid #14908c;outline-offset:2px}
+.kd-atn-resumen.hay-filtro .kd-atn-pill[aria-pressed="false"]{opacity:.55}
+.kd-atn-pill[aria-pressed="true"]{opacity:1;box-shadow:0 0 0 2px currentColor;font-weight:800}
+.kd-atn-pill[aria-pressed="true"]::before{content:"✓ "}
+.kd-atn-p-total[aria-pressed="true"]{background:#e2e8f0}
+.kd-atn-p-pendiente[aria-pressed="true"]{background:#fef3c7}
+.kd-atn-p-confirmada[aria-pressed="true"]{background:#dbeafe}
+.kd-atn-p-atendida[aria-pressed="true"]{background:#dcfce7}
+.kd-atn-p-cancelada[aria-pressed="true"]{background:#fee2e2}
 .kd-atn-p-total{color:#0f172a;border-color:#cbd5e1;background:#f8fafc}
 .kd-atn-p-pendiente{color:#92400e;border-color:#fde68a;background:#fffbeb}
 .kd-atn-p-confirmada{color:#1d4ed8;border-color:#bfdbfe;background:#eff6ff}
@@ -149,7 +160,8 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
         return mapa;
     };
 
-    function citasFiltradas() {
+    // Base: médico + fechas + texto (todo menos el estado). De aquí salen los contadores.
+    function citasBase() {
         const ids = misMedicosIds();
         let l = (appState.citas || []).filter(c => ids.includes(c.medicoId));
 
@@ -203,6 +215,17 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
             return (a.numeroOrden || 0) - (b.numeroOrden || 0);
         });
         return l;
+    }
+
+    // Filtro por estado (independiente de los demás). 'TODAS' = sin filtrar.
+    const ESTADOS = ['pendiente', 'confirmada', 'atendida', 'cancelada'];
+    function estadoActivo() {
+        return ESTADOS.includes(appState.filtroEstadoAtencion) ? appState.filtroEstadoAtencion : 'TODAS';
+    }
+    function citasFiltradas() {
+        const base = citasBase();
+        const e = estadoActivo();
+        return e === 'TODAS' ? base : base.filter(c => (c.estado || 'pendiente') === e);
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -355,23 +378,33 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
     function pintarLista() {
         const cont = document.getElementById('atn-lista');
         if (!cont) return;
-        const lista = citasFiltradas();
-        const n = e => lista.filter(c => (c.estado || 'pendiente') === e).length;
+        const base = citasBase();                           // contadores: NO cambian al elegir un estado
+        const act = estadoActivo();
+        const lista = act === 'TODAS' ? base : base.filter(c => (c.estado || 'pendiente') === act);
+        const n = e => base.filter(c => (c.estado || 'pendiente') === e).length;
+
+        const pill = (clave, cls, texto, cantidad) =>
+            '<button type="button" class="kd-atn-pill ' + cls + '" aria-pressed="' + (act === clave) + '"'
+            + ' title="' + (act === clave && clave !== 'TODAS' ? 'Quitar filtro' : 'Mostrar: ' + texto) + '"'
+            + ' onclick="kdAtnEstado(\'' + clave + '\')">' + cantidad + ' ' + texto + '</button>';
 
         const hayMas = appState._citasCursor && (appState.verTodasLasCitas || (appState.fechaInicioRango && appState.fechaFinRango));
+        const vacio = act === 'TODAS'
+            ? 'No hay citas para los filtros seleccionados'
+            : 'No hay citas ' + act + 's para los filtros seleccionados. Pulsa «Todas» para ver el resto.';
 
         cont.innerHTML =
-            '<div class="kd-atn-resumen">'
-            + '<span class="kd-atn-pill kd-atn-p-total">' + lista.length + ' cita(s)</span>'
-            + '<span class="kd-atn-pill kd-atn-p-pendiente">' + n('pendiente') + ' pendientes</span>'
-            + '<span class="kd-atn-pill kd-atn-p-confirmada">' + n('confirmada') + ' confirmadas</span>'
-            + '<span class="kd-atn-pill kd-atn-p-atendida">' + n('atendida') + ' atendidas</span>'
-            + '<span class="kd-atn-pill kd-atn-p-cancelada">' + n('cancelada') + ' canceladas</span>'
+            '<div class="kd-atn-resumen' + (act !== 'TODAS' ? ' hay-filtro' : '') + '">'
+            + pill('TODAS', 'kd-atn-p-total', 'Todas', base.length)
+            + pill('pendiente', 'kd-atn-p-pendiente', 'pendientes', n('pendiente'))
+            + pill('confirmada', 'kd-atn-p-confirmada', 'confirmadas', n('confirmada'))
+            + pill('atendida', 'kd-atn-p-atendida', 'atendidas', n('atendida'))
+            + pill('cancelada', 'kd-atn-p-cancelada', 'canceladas', n('cancelada'))
             + '</div>'
             + '<div class="kd-atn-card" style="overflow-x: auto;">'
             +   '<div class="kd-atn-head"><span>Paciente</span><span>Récord</span><span>Médico</span><span>Fecha</span><span>Orden</span><span>Estado / Seguimiento</span><span>Registrada por</span><span class="kd-atn-th-acc">Acciones</span></div>'
             +   (lista.length === 0
-                    ? '<div class="kd-atn-vacio">No hay citas para los filtros seleccionados</div>'
+                    ? '<div class="kd-atn-vacio">' + vacio + '</div>'
                     : lista.map(filaCita).join(''))
             + '</div>'
             + (hayMas ? '<button id="btn-cargar-mas-citas" class="kd-atn-mas" onclick="cargarMasCitas()">Cargar más citas</button>' : '');
@@ -477,6 +510,7 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
     };
 
     window.kdAtnHoy = function () {
+        appState.filtroEstadoAtencion = 'TODAS';       // «Hoy» también reinicia el filtro de estado
         appState.fechaInicioRango = '';
         appState.fechaFinRango = '';
         appState.verTodasLasCitas = false;
@@ -494,6 +528,12 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
         appState.verTodasLasCitas = !appState.verTodasLasCitas;
         appState.fechaSeleccionadaSecretaria = appState.verTodasLasCitas ? null : fechaHoy();
         window.kdAtencionRefrescar();
+    };
+
+    // Filtro por estado: independiente; volver a pulsar el activo equivale a «Todas»
+    window.kdAtnEstado = function (e) {
+        appState.filtroEstadoAtencion = (e === 'TODAS' || e === appState.filtroEstadoAtencion) ? 'TODAS' : e;
+        pintarLista();                  // solo la lista: no toca búsqueda, fechas ni médico
     };
 
     window.kdAtnMedico = function (id) {
