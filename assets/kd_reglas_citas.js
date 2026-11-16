@@ -254,38 +254,60 @@
 .nci-faltan{flex:1;align-self:center;text-align:left;font-size:12px;font-weight:600;color:#92400e;
   background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:7px 10px;line-height:1.35}
 .nci-faltan.alerta{color:#b91c1c;background:#fef2f2;border-color:#fca5a5}
-.nci-falta{outline:2px solid #ef4444!important;outline-offset:2px;border-radius:8px}
+.nci-falta,.kd-falta{border:2px solid #ef4444!important;border-radius:10px}
+.nci-sw.nci-falta{border:none!important}
+.nci-sw.nci-falta input{border:2px solid #ef4444!important}
+.kd-anim:not(.nci-sw),.nci-sw.kd-anim input{animation:kdPulso .55s ease-out 2}
+@keyframes kdPulso{0%{box-shadow:0 0 0 0 rgba(239,68,68,.65)}70%{box-shadow:0 0 0 7px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
+@media (max-width:768px){
+  .tanda-container.una-tanda{grid-template-columns:minmax(0,calc(50% - 2px));justify-content:center}
+}
 .nci-ok:not(.listo):not(:disabled){cursor:pointer}
-.kd-faltan-pac{font-size:12px;font-weight:600;color:#92400e;background:#fffbeb;border:1px solid #fde68a;
-  border-radius:8px;padding:7px 10px;margin:0 0 8px;line-height:1.35}`;
+`;
         document.head.appendChild(st);
     })();
 
+    // Sin texto guía en el modal del paciente: solo se resaltan los campos con borde rojo
     function pintarPistaPaciente() {
-        const btn = document.getElementById('btnConfirmarCita');
-        let el = document.getElementById('kd-faltan-pac');
-        if (!btn) { if (el) el.remove(); return; }
-        const faltan = [];
+        const el = document.getElementById('kd-faltan-pac');
+        if (el) el.remove();
+    }
+    function faltantesPaciente() {
         const f = (typeof selectedDate !== 'undefined') ? selectedDate : null;
         const t = (typeof selectedTanda !== 'undefined') ? selectedTanda : null;
         const tipo = document.getElementById('selectTipoCita');
-        if (tipo && !tipo.value) faltan.push('Tipo de consulta');
-        if (!f) faltan.push('Fecha disponible');
-        if (!t) faltan.push('Tanda');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'kd-faltan-pac';
-            el.className = 'kd-faltan-pac';
-            btn.parentNode.insertBefore(el, btn);
-        }
-        const txt = faltan.length ? 'Falta elegir: ' + faltan.join('  ·  ') : '';
-        const disp = faltan.length ? 'block' : 'none';
-        // Solo escribir si cambió: evita que el MutationObserver se dispare a sí mismo
-        if (el.textContent !== txt) el.textContent = txt;
-        if (el.style.display !== disp) el.style.display = disp;
+        const l = [];
+        if (!f) l.push(document.getElementById('calendarWrapper'));
+        if (!t && f) l.push(document.getElementById('tandaGrid'));
+        if (tipo && !tipo.value) l.push(tipo);
+        return l.filter(Boolean);
     }
+    // Mantiene el borde rojo de lo que falta (sin reiniciar la animación)
+    function resaltarFaltantesPaciente() {
+        const btn = document.getElementById('btnConfirmarCita');
+        const l = (btn && btn.dataset.intento) ? faltantesPaciente() : [];
+        document.querySelectorAll('.kd-falta').forEach(e => {
+            if (!l.includes(e)) e.classList.remove('kd-falta', 'kd-anim');
+        });
+        l.forEach(e => e.classList.add('kd-falta'));
+        return l;
+    }
+    window.kdRefrescarFaltantesPac = resaltarFaltantesPaciente;
+    window.kdConfirmarPaciente = function (medicoId) {
+        const btn = document.getElementById('btnConfirmarCita');
+        if (btn) btn.dataset.intento = '1';
+        const l = resaltarFaltantesPaciente();
+        if (l.length) {
+            l.forEach(e => e.classList.remove('kd-anim'));
+            void document.body.offsetWidth;                  // reinicia la animación en cada pulsación
+            l.forEach(e => e.classList.add('kd-anim'));
+            if (l[0].scrollIntoView) l[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+            return false;
+        }
+        return window.procesarReservaCita(medicoId);
+    };
     let _tObs = null;
-    const refrescarPista = () => { clearTimeout(_tObs); _tObs = setTimeout(pintarPistaPaciente, 80); };
+    const refrescarPista = () => { clearTimeout(_tObs); _tObs = setTimeout(resaltarFaltantesPaciente, 80); };
     new MutationObserver(refrescarPista).observe(document.body, { childList: true, subtree: true });
     document.addEventListener('click', refrescarPista, true);
     document.addEventListener('change', refrescarPista, true);
