@@ -8665,6 +8665,7 @@ function buildDays(elem) {
 
             // ATENCIÓN AL USUARIO: mismo comportamiento que secretaria, hacia su propia vista
             else if (rol === 'atencion') {
+                appState.filtroEstadoAtencion = 'TODAS';   // al cambiar de día se reinicia el filtro de estado
                 appState.fechaSeleccionadaSecretaria = fechaCelda;
                 appState.verTodasLasCitas = false;
                 appState.fechaInicioRango = '';
