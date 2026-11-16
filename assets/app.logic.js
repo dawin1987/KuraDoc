@@ -7531,7 +7531,7 @@ async function procesarReservaCita(medicoId) {
             if (sinConexion) {
                 alert(`📴 Sin conexión: tu cita quedó guardada en este dispositivo (turno provisional #${numeroOrden}) y se sincronizará sola cuando vuelva el internet.`);
             } else {
-                alert(`¡Cita solicitada! Tu turno es el #${numeroOrden}`);
+                alert(`¡Cita solicitada!`);
             }
             navigateTo('mis-citas');
         }
