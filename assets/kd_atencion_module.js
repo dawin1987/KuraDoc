@@ -62,13 +62,13 @@
         const s = document.createElement('style');
         s.id = 'kd-atn-styles';
         s.textContent = `
-.kd-atn-resumen{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;font-size:12px;color:#475569}
-.kd-atn-pill{padding:3px 10px;border-radius:999px;border:1px solid;font-weight:700;font-size:11px;
+.kd-atn-resumen{display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin:0 0 10px;font-size:12px;color:#475569}
+.kd-atn-pill{padding:3px 10px;border-radius:5px;border:1px solid;font-weight:700;font-size:11px;
   font-family:inherit;line-height:1.4;cursor:pointer;transition:opacity .15s,box-shadow .15s,transform .1s}
 .kd-atn-pill:hover{transform:translateY(-1px)}
 .kd-atn-pill:focus-visible{outline:2px solid #14908c;outline-offset:2px}
 .kd-atn-resumen.hay-filtro .kd-atn-pill[aria-pressed="false"]{opacity:.55}
-.kd-atn-pill[aria-pressed="true"]{opacity:1;box-shadow:0 0 0 2px currentColor;font-weight:800}
+.kd-atn-pill[aria-pressed="true"]{opacity:1;box-shadow:0 0 0 2px currentColor;font-weight:750}
 .kd-atn-pill[aria-pressed="true"]::before{content:"✓ "}
 .kd-atn-p-total[aria-pressed="true"]{background:#e2e8f0}
 .kd-atn-p-pendiente[aria-pressed="true"]{background:#fef3c7}
@@ -88,29 +88,29 @@
 .kd-atn-row.cancelada{opacity:.6}
 .kd-atn-row.cancelada .kd-atn-pac strong{text-decoration:line-through}
 .kd-atn-pac{display:grid;min-width:0}
-.kd-atn-pac strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kd-atn-pac strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; color:#5b5b5b}
 .kd-atn-sub{font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.kd-atn-record{font-weight:800;font-variant-numeric:tabular-nums;background:#f8fafc;border:1px solid #e2e8f0;
-  padding:2px 8px;border-radius:6px;justify-self:start;font-size:13px}
+.kd-atn-record{font-weight:620;font-variant-numeric:tabular-nums;background:#f8fafc;border:1px solid #e2e8f0;
+  padding:2px 6px;border-radius:6px;justify-self:start;font-size:11px; color:#5b5b5b}
 .kd-atn-record.vacio{font-weight:600;color:#94a3b8;font-size:11px}
 .kd-atn-est{font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid;justify-self:start;white-space:nowrap}
-.kd-atn-e-pendiente{color:#92400e;border-color:#fde68a;background:#fffbeb}
-.kd-atn-e-confirmada{color:#1d4ed8;border-color:#bfdbfe;background:#eff6ff}
-.kd-atn-e-atendida{color:#15803d;border-color:#86efac;background:#f0fdf4}
-.kd-atn-e-cancelada{color:#dc2626;border-color:#fca5a5;background:#fef2f2}
-.kd-atn-orden{font-weight:800;font-size:15px;text-align:center;border-radius:8px;padding:3px 0;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
-.kd-atn-orden.vacio{background:#f8fafc;color:#cbd5e1;border-color:#e2e8f0;font-weight:600}
+.kd-atn-e-pendiente{color:#92400e;border-color:#fde68a}
+.kd-atn-e-confirmada{color:#1d4ed8;border-color:#bfdbfe}
+.kd-atn-e-atendida{color:#15803d;border-color:#86efac}
+.kd-atn-e-cancelada{color:#dc2626;border-color:#fca5a5}
+.kd-atn-orden{font-weight:660;font-size:12px;text-align:center;border-radius:8px;padding:3px 0;color:#1d4ed8;}
+.kd-atn-orden.vacio{color:#cbd5e1;font-weight:600}
 .kd-atn-seg{display:grid;gap:3px;justify-items:start}
-.kd-atn-nota{font-size:10.5px;font-weight:600;line-height:1.25}
-.kd-atn-nota.ok{color:#15803d}.kd-atn-nota.mal{color:#dc2626}.kd-atn-nota.info{color:#1d4ed8}
-.kd-atn-acc{display:flex;gap:5px;justify-content:center;align-items:center}
+.kd-atn-nota{font-size:9.3px;font-weight:500;line-height:1.25}
+.kd-atn-nota.ok{color:#15803d}.kd-atn-nota.mal{color:#dc2626}.kd-atn-nota.info{color:#1d4ed88c}
+.kd-atn-acc{display:flex;gap:5px;justify-content: flex-end;margin-right: 10px;}
 .kd-atn-th-acc{text-align:center}
-.kd-atn-tk{border:1px solid #cbd5e1;background:#f8fafc;border-radius:6px;cursor:pointer;padding:4px 6px;font-size:14px}
+.kd-atn-tk{border:1px solid #cbd5e1;background:#f8fafc;border-radius:6px;cursor:pointer;padding:4px 6px;font-size:12px}
 .kd-atn-tk:hover{background:#e2e8f0}
 .kd-atn-tk.rep{border-color:#bfdbfe;background:#eff6ff}.kd-atn-tk.rep:hover{background:#dbeafe}
 .kd-atn-tk.can{border-color:#fca5a5;background:#fef2f2}.kd-atn-tk.can:hover{background:#fee2e2}
 .kd-atn-tk:disabled{opacity:.5;cursor:wait}
-.kd-atn-vacio{text-align:center;color:#94a3b8;font-size:13px;padding:34px 16px}
+.kd-atn-vacio{text-align:center;color:#94a3b8;font-size:12px;padding:34px 16px}
 .kd-atn-mas{display:block;margin:12px auto;padding:8px 18px;border-radius:8px;border:1px solid #14908c;
   background:#fff;color:#0f6f6c;font-weight:700;font-size:12px;cursor:pointer}
 /* Ficha de paciente: Atención NO ve lo clínico ni factura */
@@ -401,7 +401,7 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
             + pill('atendida', 'kd-atn-p-atendida', 'atendidas', n('atendida'))
             + pill('cancelada', 'kd-atn-p-cancelada', 'canceladas', n('cancelada'))
             + '</div>'
-            + '<div class="kd-atn-card">'
+            + '<div class="kd-atn-card" style="overflow: auto;">'
             +   '<div class="kd-atn-head"><span>Paciente</span><span>Récord</span><span>Médico</span><span>Fecha</span><span>Orden</span><span>Estado / Seguimiento</span><span>Registrada por</span><span class="kd-atn-th-acc">Acciones</span></div>'
             +   (lista.length === 0
                     ? '<div class="kd-atn-vacio">' + vacio + '</div>'
