@@ -7622,6 +7622,7 @@ async function renderMisCitas() {
         const posActual = turnoDoc ? (turnoDoc[fechaKey] || 0) : 0;
         const tanda     = c.tanda ? c.tanda.charAt(0).toUpperCase() + c.tanda.slice(1) : (c.horaInicio || '—');
         const confirmado= !!c.confirmadoPorPaciente;
+        const _vent     = window.kdVentanaConfirmacion(c.fechaStr || '', c.tanda, window.kdAhora());
         const fuePorSec = c.creadaPor && c.creadaPor !== c.pacienteId;
         const creador   = _uGet(c.creadaPor);
 
@@ -7666,8 +7667,10 @@ async function renderMisCitas() {
                     <span class="mc-costo">RD$ ${(c.costoFinal||0).toLocaleString()}</span>
                     ${!esPasada && c.estado !== 'cancelada' ? `
                     <div class="mc-actions">
-                        ${!confirmado ? `
+                        ${!confirmado ? (_vent.estado === 'abierta' ? `
                         <button class="mc-btn mc-btn-confirmar" onclick="_mcConfirmar('${c.id}')">✅ Confirmar</button>` : `
+                        <button class="mc-btn mc-btn-confirmar" disabled style="opacity:.5;cursor:not-allowed;"
+                            title="${_vent.estado === 'espera' ? 'Podrás confirmar a partir del ' + _vent.aperturaTxt + ', 8:00 AM' : 'La cita ya inició'}">🔒 Confirmar</button>`) : `
                         <span class="mc-confirmed-tag">✅ Confirmada</span>`}
                         <button class="mc-btn mc-btn-cancelar" onclick="_mcCancelar('${c.id}')">✕ Cancelar</button>
     ${medico?.centroMedicoId ? `
@@ -7722,6 +7725,11 @@ async function renderMisCitas() {
 // ── Confirmar asistencia desde Mis Citas ─────────────────────────
 window._mcConfirmar = async function(citaId) {
     const btn = event?.currentTarget;
+    const _c = (appState.citas || []).find(x => x.id === citaId);
+    if (_c) {
+        const _v = window.kdVentanaConfirmacion(_c.fechaStr || '', _c.tanda, window.kdAhora());
+        if (_v.estado === 'espera') { alert(`Podrás confirmar tu asistencia a partir del ${_v.aperturaTxt}, 8:00 AM.`); return; }
+    }
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
     try {
         await db.collection('citas').doc(citaId).update({
@@ -7730,7 +7738,9 @@ window._mcConfirmar = async function(citaId) {
         });
     } catch(e) {
         if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar'; }
-        alert('❌ No se pudo confirmar: ' + e.message);
+        alert(e && e.code === 'permission-denied'
+            ? '❌ Aún no es posible confirmar esta cita. Podrás hacerlo desde las 8:00 AM del día anterior.'
+            : '❌ No se pudo confirmar: ' + e.message);
     }
 };
 
@@ -21006,6 +21016,41 @@ window._eliminarAnuncio = async function(id) {
 
 
 // ╔══════════════════════════════════════════════════════════════════╗
+// ║  VENTANA DE CONFIRMACIÓN DE ASISTENCIA                           ║
+// ║  Se puede confirmar desde las 8:00 AM (hora RD) del DÍA ANTERIOR ║
+// ║  a la cita, para todas las tandas, hasta que la cita inicie.     ║
+// ║  Cancelar: disponible hasta que la cita inicie.                  ║
+// ║  ⚠ La regla REAL vive en firestore.rules (usa la hora del        ║
+// ║    servidor). Esto solo controla lo que se muestra en pantalla.  ║
+// ╚══════════════════════════════════════════════════════════════════╝
+window._kdOffsetReloj = null;
+window.kdSincronizarReloj = async function() {
+    if (window._kdOffsetReloj !== null) return;
+    try {
+        const r = await fetch(window.location.pathname, { method: 'HEAD', cache: 'no-store' });
+        const d = r.headers.get('Date');
+        if (d && !isNaN(Date.parse(d))) window._kdOffsetReloj = Date.parse(d) - Date.now();
+    } catch (e) { /* sin red o sin cabecera: se usa el reloj local */ }
+    if (window._kdOffsetReloj === null) window._kdOffsetReloj = 0;
+};
+window.kdAhora = function() { return Date.now() + (window._kdOffsetReloj || 0); };
+
+// República Dominicana es UTC-4 todo el año (sin horario de verano).
+window.kdVentanaConfirmacion = function(fechaStr, tanda, ahoraMs) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaStr || '')) {
+        return { estado: 'cerrada', aperturaMs: 0, inicioMs: 0, aperturaTxt: '' };
+    }
+    const vesp      = String(tanda || '').toLowerCase().includes('vespert');
+    const inicioMs  = Date.parse(fechaStr + 'T' + (vesp ? '14' : '08') + ':00:00-04:00');
+    const aperturaMs = Date.parse(fechaStr + 'T08:00:00-04:00') - 24 * 3600000;
+    const estado = ahoraMs < aperturaMs ? 'espera' : (ahoraMs < inicioMs ? 'abierta' : 'cerrada');
+    const aperturaTxt = new Date(aperturaMs).toLocaleDateString('es-DO', {
+        weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Santo_Domingo'
+    }).replace(',', '');
+    return { estado, aperturaMs, inicioMs, aperturaTxt };
+};
+
+// ╔══════════════════════════════════════════════════════════════════╗
 // ║  PÁGINA PÚBLICA — Confirmar / Cancelar cita (sin login)          ║
 // ║  Accesible via: ?confirmarCita=TOKEN                             ║
 // ╚══════════════════════════════════════════════════════════════════╝
@@ -21068,6 +21113,82 @@ window.renderPaginaConfirmarCita = async function(token) {
         const nombreMed    = (cita.nombreMedico || '').trim();
         const artMed       = /^dra\.?\s/i.test(nombreMed) ? 'la ' : (/^dr\.?\s/i.test(nombreMed) ? 'el ' : '');
         const yaConfirmada = !!cita.confirmadoPorPaciente;
+
+        // ── Ventana de confirmación (abre 8:00 AM del día anterior) ──
+        await window.kdSincronizarReloj();
+        const vent = window.kdVentanaConfirmacion(cita.fechaStr, cita.tanda, window.kdAhora());
+        window._kdCitaFecha = cita.fechaStr;
+        window._kdCitaTanda = cita.tanda;
+
+        // Si todavía no abre, la página se refresca sola cuando abra
+        clearTimeout(window._kdVentTimer);
+        if (vent.estado === 'espera') {
+            const msEspera = vent.aperturaMs - window.kdAhora() + 1500;
+            if (msEspera > 0 && msEspera < 2147483000) {
+                window._kdVentTimer = setTimeout(() => window.renderPaginaConfirmarCita(token), msEspera);
+            }
+        }
+
+        const btnCancelar = `
+            <button onclick="window._cancelarCitaPublica('${doc.id}', window._kdCitaNombre)"
+                style="width:100%;padding:12px;background:#fef2f2;color:#dc2626;
+                border:1.5px solid #fca5a5;border-radius:14px;font-size:13px;font-weight:700;
+                cursor:pointer;transition:all .2s;"
+                onmouseover="this.style.background='#fee2e2'"
+                onmouseout="this.style.background='#fef2f2'">
+                ✕ No podré asistir — Cancelar
+            </button>`;
+        const btnConfirmarOn = `
+            <button onclick="window._confirmarCitaPublica('${doc.id}')"
+                style="width:100%;padding:14px;background:linear-gradient(135deg,#059669,#047857);
+                color:white;border:none;border-radius:14px;font-size:14px;font-weight:800;
+                cursor:pointer;box-shadow:0 4px 16px rgba(5,150,105,.3);transition:all .2s;"
+                onmouseover="this.style.transform='translateY(-2px)'"
+                onmouseout="this.style.transform=''">
+                ✅ Confirmar mi asistencia
+            </button>`;
+        const btnConfirmarOff = `
+            <button disabled
+                style="width:100%;padding:14px;background:#e2e8f0;color:#94a3b8;border:none;
+                border-radius:14px;font-size:14px;font-weight:800;cursor:not-allowed;">
+                🔒 Confirmar mi asistencia
+            </button>
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:10px 12px;
+                font-size:12px;color:#92400e;line-height:1.5;text-align:center;">
+                ⏳ Podrás confirmar tu asistencia a partir del <strong>${esc(vent.aperturaTxt)}, 8:00 AM</strong>.
+                Vuelve a este enlace ese día.
+            </div>`;
+        const notaPie = (t) => `<p style="margin:2px 0 0;font-size:11px;color:#94a3b8;line-height:1.5;text-align:center;">${t}</p>`;
+
+        let accionesHtml;
+        const yaEnSala = (cita.estado || 'pendiente') !== 'pendiente'; // la secretaria ya la marcó 'confirmada' (llegó)
+        if (vent.estado === 'cerrada' || yaEnSala) {
+            accionesHtml = yaConfirmada
+                ? `<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;padding:14px;text-align:center;">
+                        <div style="font-size:24px;margin-bottom:6px;">🎉</div>
+                        <div style="font-size:13px;font-weight:700;color:#15803d;">¡Tu asistencia está confirmada!</div>
+                   </div>`
+                : `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px;
+                        text-align:center;font-size:12px;color:#475569;line-height:1.6;">
+                        Esta cita ya inició, por lo que no se puede confirmar ni cancelar desde aquí.
+                        Si necesitas ayuda, comunícate con el centro.
+                   </div>`;
+        } else if (yaConfirmada) {
+            accionesHtml = `
+                <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;padding:14px;text-align:center;">
+                    <div style="font-size:24px;margin-bottom:6px;">🎉</div>
+                    <div style="font-size:13px;font-weight:700;color:#15803d;">¡Tu asistencia ya está confirmada!</div>
+                    <div style="font-size:11px;color:#166534;margin-top:4px;">Recuerda llegar 30 minutos antes de tu turno.</div>
+                </div>
+                ${btnCancelar}
+                ${notaPie('Si ya no puedes asistir, puedes cancelar. Tu confirmación quedará sin efecto.')}`;
+        } else if (vent.estado === 'espera') {
+            accionesHtml = `${btnConfirmarOff}${btnCancelar}
+                ${notaPie('Si sabes que no podrás asistir, puedes cancelar en cualquier momento.')}`;
+        } else {
+            accionesHtml = `${btnConfirmarOn}${btnCancelar}
+                ${notaPie('Estos botones sirven para avisarle al centro si asistirás o si no podrás hacerlo.')}`;
+        }
 
         // Para el botón "Iniciar sesión" (el usuario del paciente es su teléfono)
         window._kdCitaNombre   = cita.nombrePaciente || '';
@@ -21155,39 +21276,9 @@ window.renderPaginaConfirmarCita = async function(token) {
                             </p>
                         </div>
 
-                        ${!yaConfirmada ? `
-                        <!-- Botones de acción -->
                         <div style="display:grid;gap:10px;" id="cita-action-area">
-                            <button onclick="window._confirmarCitaPublica('${doc.id}')"
-                                style="width:100%;padding:14px;background:linear-gradient(135deg,#059669,#047857);
-                                color:white;border:none;border-radius:14px;font-size:14px;font-weight:800;
-                                cursor:pointer;box-shadow:0 4px 16px rgba(5,150,105,.3);transition:all .2s;"
-                                onmouseover="this.style.transform='translateY(-2px)'"
-                                onmouseout="this.style.transform=''">
-                                ✅ Confirmar mi asistencia
-                            </button>
-                            <button onclick="window._cancelarCitaPublica('${doc.id}', window._kdCitaNombre)"
-                                style="width:100%;padding:12px;background:#fef2f2;color:#dc2626;
-                                border:1.5px solid #fca5a5;border-radius:14px;font-size:13px;font-weight:700;
-                                cursor:pointer;transition:all .2s;"
-                                onmouseover="this.style.background='#fee2e2'"
-                                onmouseout="this.style.background='#fef2f2'">
-                                ✕ No podré asistir — Cancelar
-                            </button>
-                            <p style="margin:2px 0 0;font-size:11px;color:#94a3b8;line-height:1.5;text-align:center;">
-                                Estos botones sirven para avisarle al centro si asistirás o si no podrás hacerlo.
-                            </p>
-                        </div>` : `
-                        <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;
-                            padding:14px;text-align:center;">
-                            <div style="font-size:24px;margin-bottom:6px;">🎉</div>
-                            <div style="font-size:13px;font-weight:700;color:#15803d;">
-                                ¡Tu asistencia ya está confirmada!
-                            </div>
-                            <div style="font-size:11px;color:#166534;margin-top:4px;">
-                                Recuerda llegar 30 minutos antes de tu turno.
-                            </div>
-                        </div>`}
+                            ${accionesHtml}
+                        </div>
                     </div>
                 </div>
 
@@ -21305,6 +21396,16 @@ function _citaPageInfo(icon, titulo, msg, bg, col) {
 
 // ── Confirmar asistencia (público, sin login) ─────────────────────
 window._confirmarCitaPublica = async function(citaId) {
+    // Revalidación con hora del servidor (la regla definitiva está en firestore.rules)
+    await window.kdSincronizarReloj();
+    const vent = window.kdVentanaConfirmacion(window._kdCitaFecha, window._kdCitaTanda, window.kdAhora());
+    if (vent.estado !== 'abierta') {
+        alert(vent.estado === 'espera'
+            ? `Aún no puedes confirmar. Estará disponible a partir del ${vent.aperturaTxt}, 8:00 AM.`
+            : 'Esta cita ya inició y no se puede confirmar desde aquí.');
+        window.location.reload();
+        return;
+    }
     const area = document.getElementById('cita-action-area');
     if (area) {
         area.innerHTML = `<div style="text-align:center;padding:20px;color:#2563eb;">
@@ -21321,8 +21422,13 @@ window._confirmarCitaPublica = async function(citaId) {
         // Recargar la página para mostrar estado confirmado
         window.location.reload();
     } catch(e) {
+        const _msgConf = (e && e.code === 'permission-denied')
+            ? 'La confirmación aún no está habilitada o la cita cambió. Recarga la página e inténtalo de nuevo.'
+            : (e && e.message) || 'Error desconocido';
         if (area) area.innerHTML = `<div style="color:#dc2626;text-align:center;padding:16px;">
-            ❌ Error al confirmar: ${e.message}<br><small>Intenta de nuevo o contacta al consultorio.</small>
+            ❌ No se pudo confirmar: ${_kdEscHtml(_msgConf)}<br>
+            <button onclick="window.location.reload()" style="margin-top:10px;padding:8px 16px;border:1px solid #fca5a5;
+                background:#fff;color:#dc2626;border-radius:10px;font-weight:700;cursor:pointer;">Recargar</button>
         </div>`;
         console.error('[ConfirmarCitaPublica]', e);
     }
@@ -21330,6 +21436,12 @@ window._confirmarCitaPublica = async function(citaId) {
 
 // ── Cancelar cita (público, sin login) ───────────────────────────
 window._cancelarCitaPublica = async function(citaId, nombrePac) {
+    await window.kdSincronizarReloj();
+    if (window.kdVentanaConfirmacion(window._kdCitaFecha, window._kdCitaTanda, window.kdAhora()).estado === 'cerrada') {
+        alert('Esta cita ya inició y no se puede cancelar desde aquí. Comunícate con el centro.');
+        window.location.reload();
+        return;
+    }
     if (!confirm(`¿Confirmas que no podrás asistir a tu cita?\n\nNombre: ${nombrePac}\n\nPuedes reagendar contactando al consultorio.`)) return;
     const area = document.getElementById('cita-action-area');
     if (area) {
@@ -21347,8 +21459,13 @@ window._cancelarCitaPublica = async function(citaId, nombrePac) {
         });
         window.location.reload();
     } catch(e) {
+        const _msgCanc = (e && e.code === 'permission-denied')
+            ? 'La cita ya no se puede cancelar desde aquí. Comunícate con el centro.'
+            : (e && e.message) || 'Error desconocido';
         if (area) area.innerHTML = `<div style="color:#dc2626;text-align:center;padding:16px;">
-            ❌ Error al cancelar: ${e.message}<br><small>Intenta de nuevo o contacta al consultorio.</small>
+            ❌ No se pudo cancelar: ${_kdEscHtml(_msgCanc)}<br>
+            <button onclick="window.location.reload()" style="margin-top:10px;padding:8px 16px;border:1px solid #fca5a5;
+                background:#fff;color:#dc2626;border-radius:10px;font-weight:700;cursor:pointer;">Recargar</button>
         </div>`;
         console.error('[CancelarCitaPublica]', e);
     }
