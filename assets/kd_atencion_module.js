@@ -401,7 +401,7 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
             + pill('atendida', 'kd-atn-p-atendida', 'atendidas', n('atendida'))
             + pill('cancelada', 'kd-atn-p-cancelada', 'canceladas', n('cancelada'))
             + '</div>'
-            + '<div class="kd-atn-card" style="overflow-x: auto;">'
+            + '<div class="kd-atn-card">'
             +   '<div class="kd-atn-head"><span>Paciente</span><span>Récord</span><span>Médico</span><span>Fecha</span><span>Orden</span><span>Estado / Seguimiento</span><span>Registrada por</span><span class="kd-atn-th-acc">Acciones</span></div>'
             +   (lista.length === 0
                     ? '<div class="kd-atn-vacio">' + vacio + '</div>'
@@ -487,6 +487,7 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
     // ── Handlers de la barra de filtros ───────────────────────────
     window.kdAtnBuscar = function (v) {
         appState.filtroBusquedaTexto = v;
+        appState.filtroEstadoAtencion = 'TODAS';       // cualquier otro filtro reinicia el estado
         pintarLista();                         // solo la lista: el input conserva el foco
     };
 
@@ -494,6 +495,7 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
         const d = document.getElementById('atn-desde')?.value || '';
         const h = document.getElementById('atn-hasta')?.value || '';
         if (d && h) {
+            appState.filtroEstadoAtencion = 'TODAS';
             appState.fechaInicioRango = d;
             appState.fechaFinRango = h;
             appState.filtroBusquedaTexto = '';
@@ -502,6 +504,7 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
             appState.verTodasLasCitas = false;
             window.kdAtencionRefrescar();
         } else if (!d && !h) {
+            appState.filtroEstadoAtencion = 'TODAS';
             appState.fechaInicioRango = '';
             appState.fechaFinRango = '';
             appState.fechaSeleccionadaSecretaria = fechaHoy();
@@ -521,6 +524,7 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
     };
 
     window.kdAtnHistorico = function () {
+        appState.filtroEstadoAtencion = 'TODAS';
         appState.fechaInicioRango = '';
         appState.fechaFinRango = '';
         appState.filtroBusquedaTexto = '';
@@ -537,6 +541,7 @@ body.rol-atencion button[onclick*="imprimirExpedientePaciente"]{display:none!imp
     };
 
     window.kdAtnMedico = function (id) {
+        appState.filtroEstadoAtencion = 'TODAS';
         appState.filtroMedicoSecretaria = id;
         window.renderCitasAtencion(true);
     };
