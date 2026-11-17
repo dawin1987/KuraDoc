@@ -3319,7 +3319,7 @@ Specificity: (0,2,0)
 .nci-vacio{text-align:center;padding:32px 12px;color:#94a3b8;font-size:12px;}
 .nci-vacio .vi{font-size:34px;margin-bottom:9px;opacity:.35;}
 @media(max-width:640px){
-  .nci-body{grid-template-columns:1fr;}
+  .nci-body{display:block; grid-template-columns:1fr;}
   .nci-L{border-right:none;border-bottom:1px solid #f0f4f8;}
 }
 
